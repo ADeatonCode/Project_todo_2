@@ -9,7 +9,8 @@ import Box from '@mui/material/Box';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
 import Auth from './pages/Auth';
-import ProtectedRoute, { readTodoUser } from './ProtectedRoute';
+import Admin from './pages/Admin';
+import ProtectedRoute, { AdminRoute, isAdminUser, readTodoUser } from './ProtectedRoute';
 
 export default function App() {
   const location = useLocation();
@@ -26,6 +27,8 @@ export default function App() {
     navigate('/auth');
   };
 
+  const admin = isAdminUser(user);
+
   return (
     <>
       <AppBar position="static">
@@ -34,13 +37,16 @@ export default function App() {
             <>
               <Button color="inherit" component={Link} to="/">Dashboard</Button>
               <Button color="inherit" component={Link} to="/tasks">Tasks</Button>
+              {admin && (
+                <Button color="inherit" component={Link} to="/admin">Admin</Button>
+              )}
             </>
           )}
           <Box sx={{ flexGrow: 1 }} />
           {user ? (
             <>
               <Typography variant="body1" sx={{ mr: 2 }}>
-                {user.name}
+                {user.name}{admin ? ' (admin)' : ''}
               </Typography>
               <Button color="inherit" onClick={handleLogout}>Logout</Button>
             </>
@@ -65,6 +71,14 @@ export default function App() {
               <ProtectedRoute>
                 <Tasks />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <Admin />
+              </AdminRoute>
             }
           />
           <Route

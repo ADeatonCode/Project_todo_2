@@ -23,7 +23,13 @@ import DialogActions from '@mui/material/DialogActions';
 import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
 import FormControlLabel from '@mui/material/FormControlLabel';
-import { getTodos, createTodo, updateTodo, getTags, createTag } from '../utils/api';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
+import Alert from '@mui/material/Alert';
+import { getTodos, createTodo, updateTodo, deleteTodo, getTags, createTag, getGroups } from '../utils/api';
+import { isAdminUser, readTodoUser } from '../ProtectedRoute';
 
 const UNGROUPED_KEY = '__ungrouped__';
 const UNGROUPED_TITLE = 'Ungrouped';
@@ -36,6 +42,22 @@ function projectGroupKey(project) {
 function projectDisplayName(project) {
   const name = typeof project === 'string' ? project.trim() : '';
   return name || UNGROUPED_TITLE;
+}
+
+function ownerLabel(task) {
+  const owner = task.userId;
+  if (!owner) return 'Unscoped (no owner)';
+  if (typeof owner === 'object') {
+    const name = owner.name || 'Unknown';
+    const email = owner.email || 'no email';
+    return `${name} (${email})`;
+  }
+  return 'Unknown owner';
+}
+
+function taskOwnerId(task) {
+  if (!task?.userId) return null;
+  return task.userId._id ? String(task.userId._id) : String(task.userId);
 }
 
 function groupTasksByProject(tasks) {
@@ -60,11 +82,15 @@ function groupTasksByProject(tasks) {
 }
 
 export default function Tasks() {
+  const currentUser = readTodoUser();
+  const admin = isAdminUser(currentUser);
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
   const [newProject, setNewProject] = useState('');
   const [availableTags, setAvailableTags] = useState([]);
   const [selectedTags, setSelectedTags] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [openTagDialog, setOpenTagDialog] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#2196f3');
@@ -82,16 +108,17 @@ export default function Tasks() {
     
     try {
       const tagIds = selectedTags.map(tag => tag._id);
-      const data = await createTodo(newTask, '', tagIds, newProject.trim());
+      const data = await createTodo(newTask, '', tagIds, newProject.trim(), selectedGroupId);
       // Add subtasks array to the new task
       const taskWithSubtasks = { ...data, subtasks: [] };
       setTasks([...tasks, taskWithSubtasks]);
       setNewTask('');
       setNewProject('');
       setSelectedTags([]);
+      setSelectedGroupId('');
     } catch (error) {
       console.error('Error creating task:', error);
-      alert('Error creating task. Please try again.');
+      alert(error.response?.data?.message || 'Error creating task. Please try again.');
     }
   };
 
@@ -147,22 +174,37 @@ export default function Tasks() {
     patchTask(id, { priority: !task.priority });
   };
   
-  const remove = (id) => {
-    setTasks(tasks.filter((t) => t._id !== id));
-    // Clean up related state
-    setExpandedTasks(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(id);
-      return newSet;
-    });
-    setSubtaskForms(prev => {
-      const { [id]: removed, ...rest } = prev;
-      return rest;
-    });
-    setNewSubtasks(prev => {
-      const { [id]: removed, ...rest } = prev;
-      return rest;
-    });
+  const canDeleteTask = (task) => {
+    if (admin) return true;
+    return taskOwnerId(task) === String(currentUser?._id);
+  };
+
+  const remove = async (id) => {
+    const task = tasks.find((t) => (t._id || t.id) === id);
+    if (task && !canDeleteTask(task)) {
+      alert('Only the owner or an admin can delete this task.');
+      return;
+    }
+    try {
+      await deleteTodo(id);
+      setTasks(tasks.filter((t) => t._id !== id && t.id !== id));
+      setExpandedTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+      setSubtaskForms(prev => {
+        const { [id]: removed, ...rest } = prev;
+        return rest;
+      });
+      setNewSubtasks(prev => {
+        const { [id]: removed, ...rest } = prev;
+        return rest;
+      });
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      alert(error.response?.data?.message || 'Could not delete task.');
+    }
   };
 
   // Subtask functions
@@ -247,18 +289,21 @@ export default function Tasks() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [todosData, tagsData] = await Promise.all([
+        const [todosData, tagsData, groupsData] = await Promise.all([
           getTodos(),
-          getTags()
+          getTags(),
+          getGroups().catch(() => [])
         ]);
         const todosList = Array.isArray(todosData) ? todosData : [];
         const tagsList = Array.isArray(tagsData) ? tagsData : [];
+        const groupsList = Array.isArray(groupsData) ? groupsData : [];
         const tasksWithSubtasks = todosList.map(task => ({
           ...task,
           subtasks: task.subtasks || []
         }));
         setTasks(tasksWithSubtasks);
         setAvailableTags(tagsList);
+        setGroups(groupsList);
       } catch (error) {
         console.error('Error fetching data:', error);
       }
@@ -284,6 +329,22 @@ export default function Tasks() {
               value={newProject}
               onChange={(e) => setNewProject(e.target.value)}
             />
+            <FormControl fullWidth>
+              <InputLabel id="share-group-label">Share with group</InputLabel>
+              <Select
+                labelId="share-group-label"
+                label="Share with group"
+                value={selectedGroupId}
+                onChange={(e) => setSelectedGroupId(e.target.value)}
+              >
+                <MenuItem value="">Just me</MenuItem>
+                {groups.map((group) => (
+                  <MenuItem key={group._id} value={group._id}>
+                    {group.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Autocomplete
@@ -331,6 +392,11 @@ export default function Tasks() {
       <Grid size={{ xs: 12, md: 6 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="h6">Tasks List</Typography>
+          {admin && (
+            <Alert severity="info">
+              Admin view: you can see and edit every user&apos;s tasks. Owner is labeled on each task.
+            </Alert>
+          )}
           {tasks.length === 0 ? (
             <Card title={UNGROUPED_TITLE}>
               <Typography color="text.secondary" sx={{ p: 2 }}>
@@ -369,9 +435,11 @@ export default function Tasks() {
                                   {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                                 </IconButton>
                               )}
-                              <IconButton edge="end" onClick={() => remove(taskId)}>
-                                <DeleteIcon />
-                              </IconButton>
+                              {canDeleteTask(task) && (
+                                <IconButton edge="end" onClick={() => remove(taskId)}>
+                                  <DeleteIcon />
+                                </IconButton>
+                              )}
                             </Box>
                           }
                         >
@@ -384,6 +452,11 @@ export default function Tasks() {
                               />
                               <ListItemText
                                 primary={task.title}
+                                secondary={
+                                  admin
+                                    ? `${ownerLabel(task)}${task.groupId?.name ? ` · Group: ${task.groupId.name}` : ''}`
+                                    : (task.groupId?.name ? `Shared with ${task.groupId.name}` : undefined)
+                                }
                                 sx={{ textDecoration: task.completed ? 'line-through' : 'none' }}
                               />
                               {hasSubtasks && (

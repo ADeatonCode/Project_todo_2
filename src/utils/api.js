@@ -12,6 +12,20 @@ const http = axios.create({
   timeout: 60000,
 });
 
+http.interceptors.request.use((config) => {
+  try {
+    const raw = localStorage.getItem("todoUser");
+    const user = raw ? JSON.parse(raw) : null;
+    if (user?._id) {
+      config.headers = config.headers || {};
+      config.headers["X-User-Id"] = user._id;
+    }
+  } catch {
+    // ignore malformed localStorage
+  }
+  return config;
+});
+
 const getTodos = async () => {
     try { 
         const response = await http.get(`${API}/api/todos/`);
@@ -22,14 +36,18 @@ const getTodos = async () => {
     }
 }
 
-const createTodo = async (title, description = "", tags = [], project = "") => {
+const createTodo = async (title, description = "", tags = [], project = "", groupId = "") => {
     try {
-        const response = await http.post(`${API}/api/todos/create`, {
+        const body = {
             title: title,
             description: description,
             tags: tags,
             project: project
-        })
+        };
+        if (groupId) {
+            body.groupId = groupId;
+        }
+        const response = await http.post(`${API}/api/todos/create`, body);
         return response.data;
     } catch (error) {
         console.error("Error creating todo:", error);
@@ -43,6 +61,16 @@ const updateTodo = async (id, updates = {}) => {
         return response.data;
     } catch (error) {
         console.error("Error updating todo:", error);
+        throw error;
+    }
+}
+
+const deleteTodo = async (id) => {
+    try {
+        const response = await http.delete(`${API}/api/todos/delete/${id}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error deleting todo:", error);
         throw error;
     }
 }
@@ -100,4 +128,101 @@ const loginUser = async (email, password) => {
     }
 }
 
-export { getTodos, createTodo, updateTodo, getTags, createTag, signupUser, loginUser };
+const getGroups = async () => {
+    try {
+        const response = await http.get(`${API}/api/groups/`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching groups:", error);
+        throw error;
+    }
+}
+
+const createGroup = async (name) => {
+    try {
+        const response = await http.post(`${API}/api/groups/`, { name });
+        return response.data;
+    } catch (error) {
+        console.error("Error creating group:", error);
+        throw error;
+    }
+}
+
+const addGroupMember = async (groupId, email) => {
+    try {
+        const response = await http.post(`${API}/api/groups/${groupId}/members`, { email });
+        return response.data;
+    } catch (error) {
+        console.error("Error adding group member:", error);
+        throw error;
+    }
+}
+
+const deleteGroup = async (groupId) => {
+    try {
+        const response = await http.delete(`${API}/api/groups/${groupId}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error deleting group:", error);
+        throw error;
+    }
+}
+
+const getAdminUsers = async () => {
+    try {
+        const response = await http.get(`${API}/api/user/admin/users`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        throw error;
+    }
+}
+
+const setUserBanned = async (id, banned) => {
+    try {
+        const response = await http.patch(`${API}/api/user/admin/users/${id}`, { banned });
+        return response.data;
+    } catch (error) {
+        console.error("Error updating ban:", error);
+        throw error;
+    }
+}
+
+const removeAdminUser = async (id) => {
+    try {
+        const response = await http.delete(`${API}/api/user/admin/users/${id}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error removing user:", error);
+        throw error;
+    }
+}
+
+const resetUserTasks = async (id) => {
+    try {
+        const response = await http.post(`${API}/api/user/admin/users/${id}/reset-tasks`);
+        return response.data;
+    } catch (error) {
+        console.error("Error resetting user tasks:", error);
+        throw error;
+    }
+}
+
+export {
+    getTodos,
+    createTodo,
+    updateTodo,
+    deleteTodo,
+    getTags,
+    createTag,
+    signupUser,
+    loginUser,
+    getGroups,
+    createGroup,
+    addGroupMember,
+    deleteGroup,
+    getAdminUsers,
+    setUserBanned,
+    removeAdminUser,
+    resetUserTasks,
+};

@@ -1,11 +1,19 @@
 const { createUser, loginUser, getUser, updateUser, deleteUser } = require("../controllers/userController");
+const { listUsers, setBanned, removeUser, resetUserTasks } = require("../controllers/adminController");
+const { requireAuth, requireAdmin } = require("../middleware/auth");
 
 const express = require("express");
 const router = express.Router();
 
-router.get("/", getUser);
 router.post("/create", createUser);
 router.post("/login", loginUser);
+
+router.get("/admin/users", requireAuth, requireAdmin, listUsers);
+router.patch("/admin/users/:id", requireAuth, requireAdmin, setBanned);
+router.delete("/admin/users/:id", requireAuth, requireAdmin, removeUser);
+router.post("/admin/users/:id/reset-tasks", requireAuth, requireAdmin, resetUserTasks);
+
+router.get("/", getUser);
 router.put("/:id", updateUser);
 router.delete("/delete/:id", deleteUser);
 

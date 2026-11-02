@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Grid, Typography } from '@mui/material';
+import { Alert, Grid, Typography } from '@mui/material';
 import { ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar } from 'recharts';
 import Card from '../components/Card';
 import { getTodos } from '../utils/api';
+import { isAdminUser, readTodoUser } from '../ProtectedRoute';
 
 const MotionGridItem = motion(Grid);
 
@@ -61,6 +62,7 @@ function weeklyActivityFromCreatedAt(todos) {
 export default function Dashboard() {
   const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const admin = isAdminUser(readTodoUser());
 
   useEffect(() => {
     const load = async () => {
@@ -101,6 +103,13 @@ export default function Dashboard() {
 
   return (
     <Grid container spacing={2}>
+      {admin && (
+        <Grid size={{ xs: 12 }}>
+          <Alert severity="info">
+            Admin view: these stats include every user&apos;s tasks (including unscoped older tasks with no owner).
+          </Alert>
+        </Grid>
+      )}
       <MotionGridItem
         size={KPI_SIZE}
         sx={{ display: 'flex' }}
