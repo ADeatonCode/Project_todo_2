@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
 import Button from '@mui/material/Button';
@@ -10,15 +10,7 @@ import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
 import Analytics from './pages/Analytics';
 import Auth from './pages/Auth';
-
-function readTodoUser() {
-  try {
-    const raw = localStorage.getItem('todoUser');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
+import ProtectedRoute, { readTodoUser } from './ProtectedRoute';
 
 export default function App() {
   const location = useLocation();
@@ -39,9 +31,13 @@ export default function App() {
     <>
       <AppBar position="static">
         <Toolbar>
-          <Button color="inherit" component={Link} to="/">Dashboard</Button>
-          <Button color="inherit" component={Link} to="/tasks">Tasks</Button>
-          <Button color="inherit" component={Link} to="/analytics">Analytics</Button>
+          {user && (
+            <>
+              <Button color="inherit" component={Link} to="/">Dashboard</Button>
+              <Button color="inherit" component={Link} to="/tasks">Tasks</Button>
+              <Button color="inherit" component={Link} to="/analytics">Analytics</Button>
+            </>
+          )}
           <Box sx={{ flexGrow: 1 }} />
           {user ? (
             <>
@@ -57,10 +53,34 @@ export default function App() {
       </AppBar>
       <Container sx={{ mt: 4 }}>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/tasks" element={<Tasks />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/auth" element={<Auth />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tasks"
+            element={
+              <ProtectedRoute>
+                <Tasks />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute>
+                <Analytics />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/auth"
+            element={user ? <Navigate to="/tasks" replace /> : <Auth />}
+          />
         </Routes>
       </Container>
     </>
