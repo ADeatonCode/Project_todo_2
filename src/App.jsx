@@ -15,11 +15,13 @@ import ProtectedRoute, { AdminRoute, isAdminUser, readTodoUser } from './Protect
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [user, setUser] = useState(readTodoUser);
+  const [, setUser] = useState(readTodoUser);
 
   useEffect(() => {
     setUser(readTodoUser());
   }, [location.pathname]);
+
+  const session = readTodoUser();
 
   const handleLogout = () => {
     localStorage.removeItem('todoUser');
@@ -27,32 +29,31 @@ export default function App() {
     navigate('/auth');
   };
 
-  const admin = isAdminUser(user);
+  // Anonymous visitors never mount Dashboard / Tasks / Admin (no flash, no API calls).
+  if (!session) {
+    return (
+      <Routes>
+        <Route path="*" element={<Auth />} />
+      </Routes>
+    );
+  }
+
+  const admin = isAdminUser(session);
 
   return (
     <>
       <AppBar position="static">
         <Toolbar>
-          {user && (
-            <>
-              <Button color="inherit" component={Link} to="/">Dashboard</Button>
-              <Button color="inherit" component={Link} to="/tasks">Tasks</Button>
-              {admin && (
-                <Button color="inherit" component={Link} to="/admin">Admin</Button>
-              )}
-            </>
+          <Button color="inherit" component={Link} to="/">Dashboard</Button>
+          <Button color="inherit" component={Link} to="/tasks">Tasks</Button>
+          {admin && (
+            <Button color="inherit" component={Link} to="/admin">Admin</Button>
           )}
           <Box sx={{ flexGrow: 1 }} />
-          {user ? (
-            <>
-              <Typography variant="body1" sx={{ mr: 2 }}>
-                {user.name}{admin ? ' (admin)' : ''}
-              </Typography>
-              <Button color="inherit" onClick={handleLogout}>Logout</Button>
-            </>
-          ) : (
-            <Button color="inherit" component={Link} to="/auth">Login/Signup</Button>
-          )}
+          <Typography variant="body1" sx={{ mr: 2 }}>
+            {session.name}{admin ? ' (admin)' : ''}
+          </Typography>
+          <Button color="inherit" onClick={handleLogout}>Logout</Button>
         </Toolbar>
       </AppBar>
       <Container sx={{ mt: 4 }}>
@@ -81,10 +82,7 @@ export default function App() {
               </AdminRoute>
             }
           />
-          <Route
-            path="/auth"
-            element={user ? <Navigate to="/tasks" replace /> : <Auth />}
-          />
+          <Route path="/auth" element={<Navigate to="/tasks" replace />} />
         </Routes>
       </Container>
     </>
