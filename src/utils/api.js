@@ -8,9 +8,13 @@ import axios from "axios";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+const http = axios.create({
+  timeout: 60000,
+});
+
 const getTodos = async () => {
     try { 
-        const response = await axios.get(`${API}/api/todos/`);
+        const response = await http.get(`${API}/api/todos/`);
         return response.data;
     } catch (error) {
         console.error("Error fetching todos:", error);
@@ -20,7 +24,7 @@ const getTodos = async () => {
 
 const createTodo = async (title, description = "", tags = []) => {
     try {
-        const response = await axios.post(`${API}/api/todos/create`, {
+        const response = await http.post(`${API}/api/todos/create`, {
             title: title,
             description: description,
             tags: tags
@@ -35,7 +39,7 @@ const createTodo = async (title, description = "", tags = []) => {
 // Tag API functions
 const getTags = async () => {
     try {
-        const response = await axios.get(`${API}/api/tags/`);
+        const response = await http.get(`${API}/api/tags/`);
         return response.data;
     } catch (error) {
         console.error("Error fetching tags:", error);
@@ -45,7 +49,7 @@ const getTags = async () => {
 
 const createTag = async (name, color = "#2196f3", description = "") => {
     try {
-        const response = await axios.post(`${API}/api/tags/create`, {
+        const response = await http.post(`${API}/api/tags/create`, {
             name: name,
             color: color,
             description: description
@@ -60,7 +64,7 @@ const createTag = async (name, color = "#2196f3", description = "") => {
 // User API functions
 const signupUser = async (name, email, password) => {
     try {
-        const response = await axios.post(`${API}/api/user/create`, {
+        const response = await http.post(`${API}/api/user/create`, {
             name: name,
             email: email,
             password: password
@@ -74,7 +78,7 @@ const signupUser = async (name, email, password) => {
 
 const loginUser = async (email, password) => {
     try {
-        const response = await axios.post(`${API}/api/user/login`, {
+        const response = await http.post(`${API}/api/user/login`, {
             email: email,
             password: password
         });

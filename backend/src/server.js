@@ -19,17 +19,31 @@ const connectDB = async () => {
 
 const app = express();
 
-const allowedOrigins = [
+const frontendOrigin = process.env.FRONTEND_ORIGIN;
+const localOrigins = [
   "http://localhost:5173",
-  process.env.FRONTEND_ORIGIN
-].filter(Boolean);
+  "http://localhost:5174",
+];
 
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    return cb(null, false);
-  }
-}));
+if (frontendOrigin) {
+  const allowedOrigins = [...localOrigins, frontendOrigin].filter(Boolean);
+  const isInfinityFreeOrigin = (origin) =>
+    /infinityfreeapp\.com$/.test(origin) ||
+    /infinityfree\.com$/.test(origin) ||
+    /epizy\.com$/.test(origin);
+
+  app.use(cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      if (isInfinityFreeOrigin(origin)) return cb(null, true);
+      return cb(null, false);
+    }
+  }));
+} else {
+  // Class demo: Render often has no FRONTEND_ORIGIN, so keep CORS open.
+  app.use(cors());
+}
 app.use(express.json());
 
 connectDB()
