@@ -4,6 +4,7 @@ const todoSchema = new mongoose.Schema({
     description: { type: String, default:"" },
     project: { type: String, default: "" },
     completed: {type: Boolean, default: false},
+    priority: { type: Boolean, default: false },
     tags: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Tag',

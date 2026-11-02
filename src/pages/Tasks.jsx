@@ -22,7 +22,42 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
-import { getTodos, createTodo, getTags, createTag } from '../utils/api';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import { getTodos, createTodo, updateTodo, getTags, createTag } from '../utils/api';
+
+const UNGROUPED_KEY = '__ungrouped__';
+const UNGROUPED_TITLE = 'Ungrouped';
+
+function projectGroupKey(project) {
+  const name = typeof project === 'string' ? project.trim() : '';
+  return name ? name.toLowerCase() : UNGROUPED_KEY;
+}
+
+function projectDisplayName(project) {
+  const name = typeof project === 'string' ? project.trim() : '';
+  return name || UNGROUPED_TITLE;
+}
+
+function groupTasksByProject(tasks) {
+  const groups = new Map();
+  for (const task of tasks) {
+    const key = projectGroupKey(task.project);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        displayName: projectDisplayName(task.project),
+        tasks: [],
+      });
+    }
+    groups.get(key).tasks.push(task);
+  }
+
+  return Array.from(groups.values()).sort((a, b) => {
+    if (a.key === UNGROUPED_KEY) return 1;
+    if (b.key === UNGROUPED_KEY) return -1;
+    return a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' });
+  });
+}
 
 export default function Tasks() {
   const [tasks, setTasks] = useState([]);
@@ -78,8 +113,38 @@ export default function Tasks() {
     }
   };
 
+  const patchTask = async (id, updates) => {
+    const current = tasks.find((t) => (t._id || t.id) === id);
+    if (!current) return;
+    setTasks((prev) => prev.map((t) => ((t._id || t.id) === id ? { ...t, ...updates } : t)));
+    try {
+      const updated = await updateTodo(id, updates);
+      if (updated && updated._id) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            (t._id || t.id) === id
+              ? { ...t, ...updated, subtasks: t.subtasks || [] }
+              : t
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error updating task:', error);
+      setTasks((prev) => prev.map((t) => ((t._id || t.id) === id ? current : t)));
+      alert('Could not save task. Please try again.');
+    }
+  };
+
   const toggle = (id) => {
-    setTasks(tasks.map((t) => (t._id === id ? { ...t, completed: !t.completed } : t)));
+    const task = tasks.find((t) => (t._id || t.id) === id);
+    if (!task) return;
+    patchTask(id, { completed: !task.completed });
+  };
+
+  const togglePriority = (id) => {
+    const task = tasks.find((t) => (t._id || t.id) === id);
+    if (!task) return;
+    patchTask(id, { priority: !task.priority });
   };
   
   const remove = (id) => {
@@ -179,10 +244,6 @@ export default function Tasks() {
     );
   };
 
-  // The useEffect hook is a React hook that allows you to perform side effects in your component.
-  // a useEffect takes two arguments:
-  // 1. a function that will be executed after the component is mounted
-  // 2. an array of dependencies
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -268,169 +329,180 @@ export default function Tasks() {
       </Grid>
       
       <Grid size={{ xs: 12, md: 6 }}>
-        <Card title="Tasks List">
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="h6">Tasks List</Typography>
           {tasks.length === 0 ? (
-            <Typography color="text.secondary" sx={{ p: 2 }}>
-              No tasks yet. Add one to get started.
-            </Typography>
+            <Card title={UNGROUPED_TITLE}>
+              <Typography color="text.secondary" sx={{ p: 2 }}>
+                No tasks yet. Add one to get started.
+              </Typography>
+            </Card>
           ) : (
-          <List>
-            {tasks.map((task) => {
-              const taskId = task._id || task.id;
-              const isExpanded = expandedTasks.has(taskId);
-              const showSubtaskForm = subtaskForms[taskId];
-              const hasSubtasks = task.subtasks && task.subtasks.length > 0;
-              
-              return (
-                <Box key={taskId}>
-                  <ListItem
-                    secondaryAction={
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <IconButton 
-                          onClick={() => toggleSubtaskForm(taskId)}
-                          color="primary"
-                          title="Add subtask"
-                          size="small"
-                        >
-                          <AddIcon />
-                        </IconButton>
-                        {hasSubtasks && (
-                          <IconButton 
-                            onClick={() => toggleTaskExpansion(taskId)}
-                            title={isExpanded ? "Collapse subtasks" : "Expand subtasks"}
-                            size="small"
-                          >
-                            {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                          </IconButton>
-                        )}
-                        <IconButton edge="end" onClick={() => remove(taskId)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </Box>
-                    }
-                  >
-                    <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Checkbox
-                          checked={task.completed}
-                          onChange={() => toggle(taskId)}
-                        />
-                        <ListItemText
-                          primary={task.title}
-                          sx={{ textDecoration: task.completed ? 'line-through' : 'none' }}
-                        />
-                        {hasSubtasks && (
-                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                            ({task.subtasks.filter(st => st.completed).length}/{task.subtasks.length})
-                          </Typography>
-                        )}
-                      </Box>
-                      
-                      {(task.project || (task.tags && task.tags.length > 0)) && (
-                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', ml: 5, alignItems: 'center' }}>
-                          {task.project && (
-                            <Chip
-                              label={task.project}
-                              size="small"
-                              variant="outlined"
-                              sx={{ fontSize: '0.7rem' }}
-                            />
-                          )}
-                          {task.tags && task.tags.map((tag, index) => (
-                            <Chip
-                              key={tag._id || index}
-                              label={tag.name}
-                              size="small"
-                              style={{ 
-                                backgroundColor: tag.color, 
-                                color: 'white',
-                                fontSize: '0.7rem'
-                              }}
-                            />
-                          ))}
-                        </Box>
-                      )}
-                    </Box>
-                  </ListItem>
+            groupTasksByProject(tasks).map((group) => (
+              <Card key={group.key} title={group.displayName}>
+                <List>
+                  {group.tasks.map((task) => {
+                    const taskId = task._id || task.id;
+                    const isExpanded = expandedTasks.has(taskId);
+                    const showSubtaskForm = subtaskForms[taskId];
+                    const hasSubtasks = task.subtasks && task.subtasks.length > 0;
 
-                  {/* Subtask Form */}
-                  <Collapse in={showSubtaskForm}>
-                    <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                        <TextField
-                          size="small"
-                          placeholder="Enter subtask..."
-                          value={newSubtasks[taskId] || ''}
-                          onChange={(e) => setNewSubtasks(prev => ({
-                            ...prev,
-                            [taskId]: e.target.value
-                          }))}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              addSubtask(taskId);
-                            }
-                          }}
-                          sx={{ flexGrow: 1 }}
-                        />
-                        <Button 
-                          size="small" 
-                          variant="contained" 
-                          onClick={() => addSubtask(taskId)}
-                        >
-                          Add
-                        </Button>
-                        <Button 
-                          size="small" 
-                          onClick={() => toggleSubtaskForm(taskId)}
-                        >
-                          Cancel
-                        </Button>
-                      </Box>
-                    </Box>
-                  </Collapse>
-
-                  {/* Subtasks List */}
-                  <Collapse in={isExpanded && hasSubtasks}>
-                    <Box sx={{ pl: 4 }}>
-                      <Divider sx={{ mb: 1 }} />
-                      {task.subtasks.map((subtask) => (
+                    return (
+                      <Box key={taskId}>
                         <ListItem
-                          key={subtask.id}
-                          dense
                           secondaryAction={
-                            <IconButton 
-                              edge="end" 
-                              onClick={() => removeSubtask(taskId, subtask.id)}
-                              size="small"
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <IconButton
+                                onClick={() => toggleSubtaskForm(taskId)}
+                                color="primary"
+                                title="Add subtask"
+                                size="small"
+                              >
+                                <AddIcon />
+                              </IconButton>
+                              {hasSubtasks && (
+                                <IconButton
+                                  onClick={() => toggleTaskExpansion(taskId)}
+                                  title={isExpanded ? "Collapse subtasks" : "Expand subtasks"}
+                                  size="small"
+                                >
+                                  {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                </IconButton>
+                              )}
+                              <IconButton edge="end" onClick={() => remove(taskId)}>
+                                <DeleteIcon />
+                              </IconButton>
+                            </Box>
                           }
                         >
-                          <Checkbox
-                            checked={subtask.completed}
-                            onChange={() => toggleSubtask(taskId, subtask.id)}
-                            size="small"
-                          />
-                          <ListItemText
-                            primary={subtask.title}
-                            sx={{ 
-                              textDecoration: subtask.completed ? 'line-through' : 'none',
-                              '& .MuiListItemText-primary': {
-                                fontSize: '0.9rem'
-                              }
-                            }}
-                          />
+                          <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', pr: 1 }}>
+                              <Checkbox
+                                checked={!!task.completed}
+                                onChange={() => toggle(taskId)}
+                                title="Mark complete"
+                              />
+                              <ListItemText
+                                primary={task.title}
+                                sx={{ textDecoration: task.completed ? 'line-through' : 'none' }}
+                              />
+                              {hasSubtasks && (
+                                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                  ({task.subtasks.filter(st => st.completed).length}/{task.subtasks.length})
+                                </Typography>
+                              )}
+                              <FormControlLabel
+                                sx={{ ml: 1, mr: 0, whiteSpace: 'nowrap' }}
+                                control={
+                                  <Checkbox
+                                    checked={!!task.priority}
+                                    onChange={() => togglePriority(taskId)}
+                                    size="small"
+                                    color="warning"
+                                    title="Priority"
+                                  />
+                                }
+                                label={<Typography variant="caption">Priority</Typography>}
+                              />
+                            </Box>
+
+                            {task.tags && task.tags.length > 0 && (
+                              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', ml: 5, alignItems: 'center' }}>
+                                {task.tags.map((tag, index) => (
+                                  <Chip
+                                    key={tag._id || index}
+                                    label={tag.name}
+                                    size="small"
+                                    style={{
+                                      backgroundColor: tag.color,
+                                      color: 'white',
+                                      fontSize: '0.7rem'
+                                    }}
+                                  />
+                                ))}
+                              </Box>
+                            )}
+                          </Box>
                         </ListItem>
-                      ))}
-                    </Box>
-                  </Collapse>
-                </Box>
-              );
-            })}
-          </List>
+
+                        <Collapse in={showSubtaskForm}>
+                          <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                              <TextField
+                                size="small"
+                                placeholder="Enter subtask..."
+                                value={newSubtasks[taskId] || ''}
+                                onChange={(e) => setNewSubtasks(prev => ({
+                                  ...prev,
+                                  [taskId]: e.target.value
+                                }))}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    addSubtask(taskId);
+                                  }
+                                }}
+                                sx={{ flexGrow: 1 }}
+                              />
+                              <Button
+                                size="small"
+                                variant="contained"
+                                onClick={() => addSubtask(taskId)}
+                              >
+                                Add
+                              </Button>
+                              <Button
+                                size="small"
+                                onClick={() => toggleSubtaskForm(taskId)}
+                              >
+                                Cancel
+                              </Button>
+                            </Box>
+                          </Box>
+                        </Collapse>
+
+                        <Collapse in={isExpanded && hasSubtasks}>
+                          <Box sx={{ pl: 4 }}>
+                            <Divider sx={{ mb: 1 }} />
+                            {task.subtasks.map((subtask) => (
+                              <ListItem
+                                key={subtask.id}
+                                dense
+                                secondaryAction={
+                                  <IconButton
+                                    edge="end"
+                                    onClick={() => removeSubtask(taskId, subtask.id)}
+                                    size="small"
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                }
+                              >
+                                <Checkbox
+                                  checked={subtask.completed}
+                                  onChange={() => toggleSubtask(taskId, subtask.id)}
+                                  size="small"
+                                />
+                                <ListItemText
+                                  primary={subtask.title}
+                                  sx={{
+                                    textDecoration: subtask.completed ? 'line-through' : 'none',
+                                    '& .MuiListItemText-primary': {
+                                      fontSize: '0.9rem'
+                                    }
+                                  }}
+                                />
+                              </ListItem>
+                            ))}
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    );
+                  })}
+                </List>
+              </Card>
+            ))
           )}
-        </Card>
+        </Box>
       </Grid>
 
       {/* Create New Tag Dialog */}
