@@ -123,6 +123,12 @@ export default function Auth() {
           <Tab label="Sign Up" />
         </Tabs>
 
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {loading
+            ? 'Waking server / this can take a minute...'
+            : 'The login process could take a few minutes while the server wakes up — please be patient.'}
+        </Alert>
+
         {message && (
           <Alert severity={messageType} sx={{ mb: 2 }}>
             {message}
@@ -162,7 +168,7 @@ export default function Auth() {
               disabled={loading}
               sx={{ mt: 2, py: 1.5 }}
             >
-              {loading ? 'Logging in...' : 'Login'}
+              {loading ? 'Waking server / this can take a minute...' : 'Login'}
             </Button>
           </Box>
         )}
@@ -221,7 +227,7 @@ export default function Auth() {
               disabled={loading}
               sx={{ mt: 2, py: 1.5 }}
             >
-              {loading ? 'Creating Account...' : 'Sign Up'}
+              {loading ? 'Waking server / this can take a minute...' : 'Sign Up'}
             </Button>
           </Box>
         )}
