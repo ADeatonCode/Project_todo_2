@@ -1,7 +1,7 @@
 const Todo = require("../models/Todo");
 
 const createTodo = async (req, res) => {
-  const { title, description, tags } = req.body;
+  const { title, description, tags, project } = req.body;
 
   try {
     // Validate that at least one tag is provided
@@ -9,7 +9,12 @@ const createTodo = async (req, res) => {
       return res.status(400).send({ message: "At least one tag is required" });
     }
 
-    const addTodo = await Todo.create({ title, description, tags });
+    const addTodo = await Todo.create({
+      title,
+      description,
+      tags,
+      project: project || "",
+    });
     res.status(201).send(addTodo);
   } catch (error) {
     console.error("Error creating todo:", error);

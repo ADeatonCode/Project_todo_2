@@ -27,6 +27,7 @@ import { getTodos, createTodo, getTags, createTag } from '../utils/api';
 export default function Tasks() {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
+  const [newProject, setNewProject] = useState('');
   const [availableTags, setAvailableTags] = useState([]);
   const [selectedTags, setSelectedTags] = useState([]);
   const [openTagDialog, setOpenTagDialog] = useState(false);
@@ -46,11 +47,12 @@ export default function Tasks() {
     
     try {
       const tagIds = selectedTags.map(tag => tag._id);
-      const data = await createTodo(newTask, '', tagIds);
+      const data = await createTodo(newTask, '', tagIds, newProject.trim());
       // Add subtasks array to the new task
       const taskWithSubtasks = { ...data, subtasks: [] };
       setTasks([...tasks, taskWithSubtasks]);
       setNewTask('');
+      setNewProject('');
       setSelectedTags([]);
     } catch (error) {
       console.error('Error creating task:', error);
@@ -206,7 +208,7 @@ export default function Tasks() {
 
   return (
     <Grid container spacing={2}>
-      <Grid item xs={12} md={6}>
+      <Grid size={{ xs: 12, md: 6 }}>
         <Card title="Add New Task">
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
@@ -214,6 +216,12 @@ export default function Tasks() {
               label="Task title..."
               value={newTask}
               onChange={(e) => setNewTask(e.target.value)}
+            />
+            <TextField
+              fullWidth
+              label="Project"
+              value={newProject}
+              onChange={(e) => setNewProject(e.target.value)}
             />
             
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -259,7 +267,7 @@ export default function Tasks() {
         </Card>
       </Grid>
       
-      <Grid item xs={12} md={6}>
+      <Grid size={{ xs: 12, md: 6 }}>
         <Card title="Tasks List">
           {tasks.length === 0 ? (
             <Typography color="text.secondary" sx={{ p: 2 }}>
@@ -318,9 +326,17 @@ export default function Tasks() {
                         )}
                       </Box>
                       
-                      {task.tags && task.tags.length > 0 && (
-                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', ml: 5 }}>
-                          {task.tags.map((tag, index) => (
+                      {(task.project || (task.tags && task.tags.length > 0)) && (
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', ml: 5, alignItems: 'center' }}>
+                          {task.project && (
+                            <Chip
+                              label={task.project}
+                              size="small"
+                              variant="outlined"
+                              sx={{ fontSize: '0.7rem' }}
+                            />
+                          )}
+                          {task.tags && task.tags.map((tag, index) => (
                             <Chip
                               key={tag._id || index}
                               label={tag.name}

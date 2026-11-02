@@ -8,7 +8,6 @@ import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
-import Analytics from './pages/Analytics';
 import Auth from './pages/Auth';
 import ProtectedRoute, { readTodoUser } from './ProtectedRoute';
 
@@ -35,7 +34,6 @@ export default function App() {
             <>
               <Button color="inherit" component={Link} to="/">Dashboard</Button>
               <Button color="inherit" component={Link} to="/tasks">Tasks</Button>
-              <Button color="inherit" component={Link} to="/analytics">Analytics</Button>
             </>
           )}
           <Box sx={{ flexGrow: 1 }} />
@@ -66,14 +64,6 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Tasks />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/analytics"
-            element={
-              <ProtectedRoute>
-                <Analytics />
               </ProtectedRoute>
             }
           />

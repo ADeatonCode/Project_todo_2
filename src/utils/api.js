@@ -22,16 +22,27 @@ const getTodos = async () => {
     }
 }
 
-const createTodo = async (title, description = "", tags = []) => {
+const createTodo = async (title, description = "", tags = [], project = "") => {
     try {
         const response = await http.post(`${API}/api/todos/create`, {
             title: title,
             description: description,
-            tags: tags
+            tags: tags,
+            project: project
         })
         return response.data;
     } catch (error) {
         console.error("Error creating todo:", error);
+        throw error;
+    }
+}
+
+const updateTodo = async (id, updates = {}) => {
+    try {
+        const response = await http.put(`${API}/api/todos/${id}`, updates);
+        return response.data;
+    } catch (error) {
+        console.error("Error updating todo:", error);
         throw error;
     }
 }
@@ -89,4 +100,4 @@ const loginUser = async (email, password) => {
     }
 }
 
-export { getTodos, createTodo, getTags, createTag, signupUser, loginUser };
+export { getTodos, createTodo, updateTodo, getTags, createTag, signupUser, loginUser };
