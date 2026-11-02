@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: project-todo-2-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/server.js
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
