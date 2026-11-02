@@ -1,7 +1,7 @@
 Options -MultiViews
 RewriteEngine On
-RewriteBase /Projects/project_todo_2/
+RewriteBase /projects/todo/
 RewriteRule ^index\.html$ - [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /Projects/project_todo_2/index.html [L]
+RewriteRule . /projects/todo/index.html [L]

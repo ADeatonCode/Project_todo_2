@@ -10,7 +10,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter basename="/Projects/project_todo_2">
+      <BrowserRouter basename="/projects/todo">
         <App />
       </BrowserRouter>
     </ThemeProvider>

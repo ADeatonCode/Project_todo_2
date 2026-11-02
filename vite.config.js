@@ -5,5 +5,5 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   // InfinityFree subfolder under the lagoon (do not deploy to htdocs root)
-  base: '/Projects/project_todo_2/',
+  base: '/projects/todo/',
 })
