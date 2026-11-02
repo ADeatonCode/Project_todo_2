@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -8,15 +9,28 @@ import {
   Typography,
   Alert,
   Tab,
-  Tabs,
-  Grid
+  Tabs
 } from '@mui/material';
 import { motion } from 'motion/react';
 import { signupUser, loginUser } from '../utils/api';
 
 const MotionPaper = motion(Paper);
 
+function persistTodoUser(user) {
+  if (!user) return;
+  localStorage.setItem('todoUser', JSON.stringify({
+    _id: user._id,
+    name: user.name,
+    email: user.email
+  }));
+}
+
+function apiErrorMessage(error, fallback) {
+  return error.response?.data?.message || error.message || fallback;
+}
+
 export default function Auth() {
+  const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
   const [formData, setFormData] = useState({
     name: '',
@@ -60,16 +74,12 @@ export default function Auth() {
 
     try {
       const result = await signupUser(formData.name, formData.email, formData.password);
+      persistTodoUser(result);
       setMessage('Account created successfully!');
       setMessageType('success');
-      setFormData({
-        name: '',
-        email: '',
-        password: '',
-        confirmPassword: ''
-      });
+      navigate('/tasks');
     } catch (error) {
-      setMessage(error.response?.data?.message || 'Error creating account');
+      setMessage(apiErrorMessage(error, 'Error creating account'));
       setMessageType('error');
     } finally {
       setLoading(false);
@@ -83,12 +93,12 @@ export default function Auth() {
 
     try {
       const result = await loginUser(formData.email, formData.password);
+      persistTodoUser(result);
       setMessage('Login successful!');
       setMessageType('success');
-      // Here you would typically redirect or update global state
-      console.log('Login result:', result);
+      navigate('/tasks');
     } catch (error) {
-      setMessage(error.response?.data?.message || 'Error logging in');
+      setMessage(apiErrorMessage(error, 'Invalid email or password'));
       setMessageType('error');
     } finally {
       setLoading(false);

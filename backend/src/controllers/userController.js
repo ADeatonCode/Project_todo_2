@@ -5,13 +5,15 @@ const createUser = async (req, res) => {
 
   try {
     const addUser = await User.create({ name, email, password });
-    res.status(201).send(addUser);
+    const userObj = addUser.toObject();
+    delete userObj.password;
+    res.status(201).send(userObj);
   } catch (error) {
     console.error("Error creating user:", error);
     if (error.code === 11000) {
       return res.status(400).send({ message: "Email already in use" });
     }
-    res.status(500).send({ message: "Internal server error" });
+    return res.status(500).send({ message: "Internal server error" });
   }
 };
 
@@ -19,8 +21,8 @@ const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const user = await User.findOne({ email, password });
-    if (!user) {
+    const user = await User.findOne({ email });
+    if (!user || user.password !== password) {
       return res.status(401).send({ message: "Invalid email or password" });
     }
     const userObj = user.toObject();

@@ -25,23 +25,7 @@ import Divider from '@mui/material/Divider';
 import { getTodos, createTodo, getTags, createTag } from '../utils/api';
 
 export default function Tasks() {
-  const [tasks, setTasks] = useState([
-    { 
-      id: 1, 
-      title: 'Buy groceries', 
-      done: false,
-      subtasks: [
-        { id: 11, title: 'Buy milk', completed: false },
-        { id: 12, title: 'Buy bread', completed: true }
-      ]
-    },
-    { 
-      id: 2, 
-      title: 'Walk the dog', 
-      done: true,
-      subtasks: []
-    },
-  ]);
+  const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
   const [availableTags, setAvailableTags] = useState([]);
   const [selectedTags, setSelectedTags] = useState([]);
@@ -204,13 +188,14 @@ export default function Tasks() {
           getTodos(),
           getTags()
         ]);
-        // Ensure all tasks have subtasks array
-        const tasksWithSubtasks = todosData.map(task => ({
+        const todosList = Array.isArray(todosData) ? todosData : [];
+        const tagsList = Array.isArray(tagsData) ? tagsData : [];
+        const tasksWithSubtasks = todosList.map(task => ({
           ...task,
           subtasks: task.subtasks || []
         }));
         setTasks(tasksWithSubtasks);
-        setAvailableTags(tagsData);
+        setAvailableTags(tagsList);
       } catch (error) {
         console.error('Error fetching data:', error);
       }
@@ -276,6 +261,11 @@ export default function Tasks() {
       
       <Grid item xs={12} md={6}>
         <Card title="Tasks List">
+          {tasks.length === 0 ? (
+            <Typography color="text.secondary" sx={{ p: 2 }}>
+              No tasks yet. Add one to get started.
+            </Typography>
+          ) : (
           <List>
             {tasks.map((task) => {
               const taskId = task._id || task.id;
@@ -423,6 +413,7 @@ export default function Tasks() {
               );
             })}
           </List>
+          )}
         </Card>
       </Grid>
 
