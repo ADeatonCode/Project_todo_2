@@ -13,6 +13,14 @@ const PIE_COLORS = {
   'High priority': '#ff9800',
 };
 
+const KPI_MIN_HEIGHT = 148;
+const KPI_SIZE = { xs: 12, md: 4 };
+const KPI_NUMBER_SX = {
+  variant: 'h4',
+  component: 'p',
+  sx: { fontWeight: 600, lineHeight: 1.15, whiteSpace: 'nowrap' },
+};
+
 function uniqueProjectCount(todos) {
   const keys = new Set();
   for (const todo of todos) {
@@ -94,10 +102,49 @@ export default function Dashboard() {
   return (
     <Grid container spacing={2}>
       <MotionGridItem
-        size={{ xs: 12, md: 6 }}
+        size={KPI_SIZE}
+        sx={{ display: 'flex' }}
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
+      >
+        <Card title="Total Tasks" minHeight={KPI_MIN_HEIGHT}>
+          <Typography {...KPI_NUMBER_SX}>{loading ? '—' : totalTasks}</Typography>
+        </Card>
+      </MotionGridItem>
+
+      <MotionGridItem
+        size={KPI_SIZE}
+        sx={{ display: 'flex' }}
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+      >
+        <Card title="Active Projects" minHeight={KPI_MIN_HEIGHT}>
+          <Typography {...KPI_NUMBER_SX}>{loading ? '—' : activeProjects}</Typography>
+        </Card>
+      </MotionGridItem>
+
+      <MotionGridItem
+        size={KPI_SIZE}
+        sx={{ display: 'flex' }}
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+      >
+        <Card title="Priority" minHeight={KPI_MIN_HEIGHT}>
+          <Typography {...KPI_NUMBER_SX}>{loading ? '—' : priorityCount}</Typography>
+          <Typography variant="caption" color="text.secondary" display="block">
+            {loading ? '—' : `${priorityOpenCount} open`}
+          </Typography>
+        </Card>
+      </MotionGridItem>
+
+      <MotionGridItem
+        size={{ xs: 12 }}
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35, type: 'spring', stiffness: 200 }}
       >
         <Card title="Task Completion">
           {loading ? (
@@ -124,42 +171,6 @@ export default function Dashboard() {
               </PieChart>
             </ResponsiveContainer>
           )}
-        </Card>
-      </MotionGridItem>
-
-      <MotionGridItem
-        size={{ xs: 12, sm: 4, md: 2 }}
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-      >
-        <Card title="Total Tasks">
-          <Typography variant="h3">{loading ? '—' : totalTasks}</Typography>
-        </Card>
-      </MotionGridItem>
-
-      <MotionGridItem
-        size={{ xs: 12, sm: 4, md: 2 }}
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
-      >
-        <Card title="Active Projects">
-          <Typography variant="h3">{loading ? '—' : activeProjects}</Typography>
-        </Card>
-      </MotionGridItem>
-
-      <MotionGridItem
-        size={{ xs: 12, sm: 4, md: 2 }}
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35, type: 'spring', stiffness: 200 }}
-      >
-        <Card title="Priority">
-          <Typography variant="h3">{loading ? '—' : priorityCount}</Typography>
-          <Typography variant="caption" color="text.secondary">
-            {priorityOpenCount} open
-          </Typography>
         </Card>
       </MotionGridItem>
 
