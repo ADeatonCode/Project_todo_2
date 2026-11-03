@@ -183,6 +183,20 @@ const getAdminUsers = async () => {
     }
 }
 
+const createAdminUser = async (name, email, password, role) => {
+    try {
+        const body = { name, email, password };
+        if (role) {
+            body.role = role;
+        }
+        const response = await http.post(`${API}/api/user/admin/users`, body);
+        return response.data;
+    } catch (error) {
+        console.error("Error creating user:", error);
+        throw error;
+    }
+}
+
 const setUserBanned = async (id, banned) => {
     try {
         const response = await http.patch(`${API}/api/user/admin/users/${id}`, { banned });
@@ -247,6 +261,7 @@ export {
     addGroupMember,
     deleteGroup,
     getAdminUsers,
+    createAdminUser,
     setUserBanned,
     setUserRole,
     makeHead,

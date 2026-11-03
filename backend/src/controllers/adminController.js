@@ -1,8 +1,13 @@
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 const User = require("../models/user");
 const Todo = require("../models/Todo");
 const Group = require("../models/Group");
-const { isHead, isStaff, publicUser } = require("../utils/admin");
+const { isHead, isStaff, publicUser, normalizeEmail } = require("../utils/admin");
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function cannotModerate(req, target) {
   if (!target) {
@@ -26,6 +31,61 @@ const listUsers = async (req, res) => {
     res.status(200).send(users.map(publicUser));
   } catch (error) {
     console.error("Error listing users:", error);
+    res.status(500).send({ message: "Internal server error" });
+  }
+};
+
+const createAdminUser = async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    const email = normalizeEmail(req.body?.email);
+    const password = req.body?.password;
+    const requestedRole = String(req.body?.role || "user").toLowerCase().trim();
+
+    if (!name) {
+      return res.status(400).send({ message: "Name required" });
+    }
+    if (!email) {
+      return res.status(400).send({ message: "Email required" });
+    }
+    if (!password || typeof password !== "string") {
+      return res.status(400).send({ message: "Password required" });
+    }
+
+    if (requestedRole === "head") {
+      return res.status(403).send({ message: "Cannot set role to head" });
+    }
+    if (requestedRole !== "admin" && requestedRole !== "user") {
+      return res.status(400).send({ message: "Role must be admin or user" });
+    }
+    if (requestedRole === "admin" && !isHead(req.user)) {
+      return res.status(403).send({ message: "Only the head admin can create admin users" });
+    }
+
+    const role = requestedRole === "admin" && isHead(req.user) ? "admin" : "user";
+
+    const existing = await User.findOne({
+      email: { $regex: new RegExp(`^${escapeRegex(email)}$`, "i") },
+    });
+    if (existing) {
+      return res.status(400).send({ message: "Email already in use" });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    const created = await User.create({
+      name,
+      email,
+      password: hashed,
+      role,
+      banned: false,
+    });
+
+    res.status(201).send(publicUser(created));
+  } catch (error) {
+    console.error("Error creating user:", error);
+    if (error.code === 11000) {
+      return res.status(400).send({ message: "Email already in use" });
+    }
     res.status(500).send({ message: "Internal server error" });
   }
 };
@@ -198,6 +258,7 @@ const resetUserTasks = async (req, res) => {
 
 module.exports = {
   listUsers,
+  createAdminUser,
   patchAdminUser,
   makeHead,
   removeUser,

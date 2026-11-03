@@ -3,7 +3,9 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
+  FormControlLabel,
   Paper,
   Table,
   TableBody,
@@ -17,6 +19,7 @@ import Card from '../components/Card';
 import { isHeadUser, readTodoUser, writeTodoUser } from '../ProtectedRoute';
 import {
   addGroupMember,
+  createAdminUser,
   createGroup,
   deleteGroup,
   getAdminUsers,
@@ -55,6 +58,8 @@ export default function Admin() {
   const viewerIsHead = isHeadUser(currentUser);
   const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [newUser, setNewUser] = useState({ name: '', email: '', password: '' });
+  const [makeAdmin, setMakeAdmin] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [memberEmails, setMemberEmails] = useState({});
   const [message, setMessage] = useState('');
@@ -184,6 +189,27 @@ export default function Admin() {
     }
   };
 
+  const handleCreateUser = async () => {
+    const name = newUser.name.trim();
+    const email = newUser.email.trim();
+    const password = newUser.password;
+    if (!name || !email || !password) {
+      flash('Enter a name, email, and password', 'error');
+      return;
+    }
+    const role = viewerIsHead && makeAdmin ? 'admin' : 'user';
+    try {
+      await createAdminUser(name, email, password, role);
+      setNewUser({ name: '', email: '', password: '' });
+      setMakeAdmin(false);
+      const usersData = await getAdminUsers();
+      setUsers(Array.isArray(usersData) ? usersData : []);
+      flash(`Added ${email}`);
+    } catch (error) {
+      flash(apiErrorMessage(error, 'Could not add user'), 'error');
+    }
+  };
+
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
       flash('Enter a group name', 'error');
@@ -242,7 +268,7 @@ export default function Admin() {
                   <TableCell>Name</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Role</TableCell>
-                  <TableCell>Banned</TableCell>
+                  <TableCell>Status</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -261,11 +287,11 @@ export default function Admin() {
                         <Chip size="small" label={badge.label} color={badge.color} />
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
-                          label={user.banned ? 'banned' : 'active'}
-                          color={user.banned ? 'error' : 'success'}
-                        />
+                        {user.banned && !targetIsHead ? (
+                          <Chip size="small" label="Banned" color="error" />
+                        ) : (
+                          <Chip size="small" label="Active" color="success" />
+                        )}
                       </TableCell>
                       <TableCell align="right">
                         {viewerIsHead && !isSelf && !targetIsHead && !user.banned && (
@@ -304,6 +330,44 @@ export default function Admin() {
             </Table>
           </Paper>
         )}
+      </Card>
+
+      <Card title="Add user">
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField
+            size="small"
+            label="Name"
+            value={newUser.name}
+            onChange={(e) => setNewUser((prev) => ({ ...prev, name: e.target.value }))}
+          />
+          <TextField
+            size="small"
+            label="Email"
+            value={newUser.email}
+            onChange={(e) => setNewUser((prev) => ({ ...prev, email: e.target.value }))}
+          />
+          <TextField
+            size="small"
+            type="password"
+            label="Password"
+            value={newUser.password}
+            onChange={(e) => setNewUser((prev) => ({ ...prev, password: e.target.value }))}
+          />
+          {viewerIsHead && (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={makeAdmin}
+                  onChange={(e) => setMakeAdmin(e.target.checked)}
+                />
+              }
+              label="Make admin"
+            />
+          )}
+          <Button variant="contained" onClick={handleCreateUser}>
+            Add user
+          </Button>
+        </Box>
       </Card>
 
       <Card title="Groups">
