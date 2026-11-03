@@ -16,9 +16,14 @@ http.interceptors.request.use((config) => {
   try {
     const raw = localStorage.getItem("todoUser");
     const user = raw ? JSON.parse(raw) : null;
-    if (user?._id) {
+    if (user?._id || user?.token) {
       config.headers = config.headers || {};
-      config.headers["X-User-Id"] = user._id;
+      if (user.token) {
+        config.headers.Authorization = `Bearer ${user.token}`;
+      }
+      if (user._id) {
+        config.headers["X-User-Id"] = user._id;
+      }
     }
   } catch {
     // ignore malformed localStorage

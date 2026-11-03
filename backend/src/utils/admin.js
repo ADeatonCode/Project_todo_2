@@ -7,9 +7,21 @@ function isAdminEmail(email) {
 
 function publicUser(user) {
   if (!user) return null;
-  const obj = typeof user.toObject === "function" ? user.toObject() : { ...user };
-  delete obj.password;
-  return obj;
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role || "user",
+    banned: !!user.banned,
+  };
 }
 
-module.exports = { isAdminEmail, publicUser };
+function authUser(user) {
+  if (!user) return null;
+  return {
+    ...publicUser(user),
+    token: user.sessionToken,
+  };
+}
+
+module.exports = { isAdminEmail, publicUser, authUser };

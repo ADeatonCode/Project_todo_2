@@ -23,7 +23,7 @@ function persistTodoUser(user) {
     name: user.name,
     email: user.email,
     role: user.role || 'user',
-    banned: !!user.banned
+    token: user.token
   }));
 }
 
@@ -117,7 +117,7 @@ export default function Auth() {
         transition={{ duration: 0.5 }}
       >
         <Typography variant="h4" align="center" gutterBottom>
-          Welcome
+          Project TODO
         </Typography>
         
         <Tabs value={tabValue} onChange={handleTabChange} centered sx={{ mb: 3 }}>
@@ -145,6 +145,7 @@ export default function Auth() {
               label="Email"
               name="email"
               type="email"
+              autoComplete="username"
               value={formData.email}
               onChange={handleInputChange}
               margin="normal"
@@ -156,6 +157,7 @@ export default function Auth() {
               label="Password"
               name="password"
               type="password"
+              autoComplete="current-password"
               value={formData.password}
               onChange={handleInputChange}
               margin="normal"
@@ -193,6 +195,7 @@ export default function Auth() {
               label="Email"
               name="email"
               type="email"
+              autoComplete="username"
               value={formData.email}
               onChange={handleInputChange}
               margin="normal"
@@ -204,6 +207,7 @@ export default function Auth() {
               label="Password"
               name="password"
               type="password"
+              autoComplete="new-password"
               value={formData.password}
               onChange={handleInputChange}
               margin="normal"
@@ -215,6 +219,7 @@ export default function Auth() {
               label="Confirm Password"
               name="confirmPassword"
               type="password"
+              autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={handleInputChange}
               margin="normal"
@@ -233,6 +238,10 @@ export default function Auth() {
             </Button>
           </Box>
         )}
+
+        <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 3 }}>
+          Open this app over https:// so the browser treats the login as secure.
+        </Typography>
       </MotionPaper>
     </Container>
   );

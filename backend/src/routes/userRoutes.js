@@ -13,8 +13,8 @@ router.patch("/admin/users/:id", requireAuth, requireAdmin, setBanned);
 router.delete("/admin/users/:id", requireAuth, requireAdmin, removeUser);
 router.post("/admin/users/:id/reset-tasks", requireAuth, requireAdmin, resetUserTasks);
 
-router.get("/", getUser);
-router.put("/:id", updateUser);
-router.delete("/delete/:id", deleteUser);
+router.get("/", requireAuth, requireAdmin, getUser);
+router.put("/:id", requireAuth, updateUser);
+router.delete("/delete/:id", requireAuth, requireAdmin, deleteUser);
 
 module.exports = router;

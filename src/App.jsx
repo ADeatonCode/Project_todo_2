@@ -44,6 +44,9 @@ export default function App() {
     <>
       <AppBar position="static">
         <Toolbar>
+          <Typography variant="h6" component="div" sx={{ mr: 2 }}>
+            Project TODO
+          </Typography>
           <Button color="inherit" component={Link} to="/">Dashboard</Button>
           <Button color="inherit" component={Link} to="/tasks">Tasks</Button>
           {admin && (

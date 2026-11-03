@@ -4,7 +4,7 @@ const Group = require("../models/Group");
 
 const listUsers = async (req, res) => {
   try {
-    const users = await User.find().select("-password").sort({ email: 1 });
+    const users = await User.find().select("-password -sessionToken").sort({ email: 1 });
     res.status(200).send(users);
   } catch (error) {
     console.error("Error listing users:", error);
@@ -25,7 +25,7 @@ const setBanned = async (req, res) => {
       id,
       { banned: !!banned },
       { new: true, runValidators: true }
-    ).select("-password");
+    ).select("-password -sessionToken");
 
     if (!user) {
       return res.status(404).send({ message: "User not found" });
@@ -63,7 +63,7 @@ const removeUser = async (req, res) => {
 const resetUserTasks = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await User.findById(id).select("-password");
+    const user = await User.findById(id).select("-password -sessionToken");
     if (!user) {
       return res.status(404).send({ message: "User not found" });
     }
