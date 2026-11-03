@@ -18,7 +18,14 @@ export default function App() {
   const [, setUser] = useState(readTodoUser);
 
   useEffect(() => {
-    setUser(readTodoUser());
+    const refresh = () => setUser(readTodoUser());
+    refresh();
+    window.addEventListener('todoUserUpdated', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('todoUserUpdated', refresh);
+      window.removeEventListener('storage', refresh);
+    };
   }, [location.pathname]);
 
   const session = readTodoUser();

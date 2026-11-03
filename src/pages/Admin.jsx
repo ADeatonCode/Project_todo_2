@@ -14,13 +14,14 @@ import {
   Typography,
 } from '@mui/material';
 import Card from '../components/Card';
-import { isHeadUser, readTodoUser } from '../ProtectedRoute';
+import { isHeadUser, readTodoUser, writeTodoUser } from '../ProtectedRoute';
 import {
   addGroupMember,
   createGroup,
   deleteGroup,
   getAdminUsers,
   getGroups,
+  makeHead,
   removeAdminUser,
   resetUserTasks,
   setUserBanned,
@@ -28,9 +29,7 @@ import {
 } from '../utils/api';
 
 function isHeadAccount(user) {
-  if (!user) return false;
-  if (user.role === 'head') return true;
-  return String(user.email || '').toLowerCase().trim() === 'acdelgato@gmail.com';
+  return isHeadUser(user);
 }
 
 function isStaffAccount(user) {
@@ -52,7 +51,7 @@ function apiErrorMessage(error, fallback) {
 }
 
 export default function Admin() {
-  const currentUser = readTodoUser();
+  const [currentUser, setCurrentUser] = useState(readTodoUser);
   const viewerIsHead = isHeadUser(currentUser);
   const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -115,6 +114,36 @@ export default function Admin() {
       flash(`Reset tasks for ${user.email} (${result.deletedCount || 0} deleted)`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not reset tasks'), 'error');
+    }
+  };
+
+  const handleMakeHead = async (user) => {
+    if (!viewerIsHead || isHeadAccount(user) || String(user._id) === String(currentUser?._id)) {
+      flash('Only the current head admin can transfer the god key', 'error');
+      return;
+    }
+    if (user.banned) {
+      flash('Cannot transfer head to a banned user', 'error');
+      return;
+    }
+    if (!window.confirm('They will have the god key. You will remain an admin.')) return;
+    try {
+      const result = await makeHead(user._id);
+      const newHead = result.head || result;
+      const former = result.formerHead;
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (former && u._id === former._id) return { ...u, ...former };
+          if (newHead && u._id === newHead._id) return { ...u, ...newHead };
+          if (u.role === 'head' && u._id !== newHead?._id) return { ...u, role: 'admin' };
+          return u;
+        })
+      );
+      writeTodoUser({ role: 'admin' });
+      setCurrentUser(readTodoUser());
+      flash(`${newHead.email} is now the head admin. You remain an admin.`);
+    } catch (error) {
+      flash(apiErrorMessage(error, 'Could not transfer head'), 'error');
     }
   };
 
@@ -239,6 +268,11 @@ export default function Admin() {
                         />
                       </TableCell>
                       <TableCell align="right">
+                        {viewerIsHead && !isSelf && !targetIsHead && !user.banned && (
+                          <Button size="small" onClick={() => handleMakeHead(user)}>
+                            Make head admin
+                          </Button>
+                        )}
                         {canChangeRole && user.role !== 'admin' && (
                           <Button size="small" onClick={() => handleRole(user, 'admin')}>
                             Make admin

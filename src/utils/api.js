@@ -203,6 +203,16 @@ const setUserRole = async (id, role) => {
     }
 }
 
+const makeHead = async (id) => {
+    try {
+        const response = await http.post(`${API}/api/user/admin/users/${id}/make-head`);
+        return response.data;
+    } catch (error) {
+        console.error("Error transferring head:", error);
+        throw error;
+    }
+}
+
 const removeAdminUser = async (id) => {
     try {
         const response = await http.delete(`${API}/api/user/admin/users/${id}`);
@@ -239,6 +249,7 @@ export {
     getAdminUsers,
     setUserBanned,
     setUserRole,
+    makeHead,
     removeAdminUser,
     resetUserTasks,
 };

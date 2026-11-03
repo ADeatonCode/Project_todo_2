@@ -52,7 +52,11 @@ const createUser = async (req, res) => {
     if (!password || typeof password !== "string") {
       return res.status(400).send({ message: "Password required" });
     }
-    const role = isAdminEmail(email) ? "head" : "user";
+    const existingHead = await User.exists({ role: "head" });
+    let role = "user";
+    if (isAdminEmail(email)) {
+      role = existingHead ? "admin" : "head";
+    }
     const hashed = await bcrypt.hash(password, 10);
     const addUser = await User.create({
       name,
@@ -65,7 +69,7 @@ const createUser = async (req, res) => {
     if (role === "head") {
       await User.updateMany(
         { _id: { $ne: addUser._id }, role: "head" },
-        { $set: { role: "user" } }
+        { $set: { role: "admin" } }
       );
     }
     res.status(201).send(authUser(addUser));

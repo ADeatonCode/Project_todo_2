@@ -26,7 +26,10 @@ const requireAuth = async (req, res, next) => {
     if (user.banned) {
       return res.status(403).send({ message: "This account is banned" });
     }
-    if (isAdminEmail(user.email) && user.role !== "head") {
+    const headCount = await User.countDocuments({ role: "head" });
+    if (headCount === 0 && isAdminEmail(user.email)) {
+      await ensureSingleHead(User, user);
+    } else if (headCount > 1) {
       await ensureSingleHead(User, user);
     }
     req.user = user;

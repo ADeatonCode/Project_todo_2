@@ -10,4 +10,9 @@ const userSchema = new mongoose.Schema({
   groups: [{ type: mongoose.Schema.Types.ObjectId, ref: "Group" }],
 });
 
+userSchema.index(
+  { role: 1 },
+  { unique: true, partialFilterExpression: { role: "head" }, name: "unique_head_role" }
+);
+
 module.exports = mongoose.model("User", userSchema);

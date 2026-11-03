@@ -11,12 +11,12 @@ function isAdminEmail(email) {
 
 function isHead(user) {
   if (!user) return false;
-  return user.role === "head" || isAdminEmail(user.email);
+  return user.role === "head";
 }
 
 function isStaff(user) {
   if (!user) return false;
-  return user.role === "admin" || user.role === "head" || isHead(user);
+  return user.role === "admin" || user.role === "head";
 }
 
 function publicUser(user) {
@@ -38,30 +38,51 @@ function authUser(user) {
   };
 }
 
+async function demoteExtraHeads(User, keepId) {
+  if (!keepId) return;
+  await User.updateMany(
+    { role: "head", _id: { $ne: keepId } },
+    { $set: { role: "admin" } }
+  );
+}
+
+async function repairHeadUniqueness(User) {
+  const heads = await User.find({ role: "head" }).select("_id").sort({ _id: 1 });
+  if (heads.length > 1) {
+    await demoteExtraHeads(User, heads[0]._id);
+  }
+  return heads[0] || null;
+}
+
 async function ensureSingleHead(User, user) {
   if (!user) return user;
   let changed = false;
 
-  if (isAdminEmail(user.email)) {
-    if (user.role !== "head") {
-      user.role = "head";
-      changed = true;
-    }
-    await User.updateMany(
-      { _id: { $ne: user._id }, role: "head" },
-      { $set: { role: "user" } }
-    );
-  } else if (user.role === "head") {
-    user.role = "user";
-    changed = true;
-  } else if (!user.role) {
+  if (!user.role) {
     user.role = "user";
     changed = true;
   }
-
   if (typeof user.banned !== "boolean") {
     user.banned = false;
     changed = true;
+  }
+
+  const heads = await User.find({ role: "head" }).select("_id").sort({ _id: 1 });
+
+  if (heads.length === 0) {
+    if (isAdminEmail(user.email)) {
+      user.role = "head";
+      changed = true;
+    }
+  } else if (heads.length > 1) {
+    const keepId = heads.some((head) => String(head._id) === String(user._id))
+      ? user._id
+      : heads[0]._id;
+    await demoteExtraHeads(User, keepId);
+    if (String(user._id) !== String(keepId) && user.role === "head") {
+      user.role = "admin";
+      changed = true;
+    }
   }
 
   if (changed) {
@@ -77,5 +98,7 @@ module.exports = {
   isStaff,
   publicUser,
   authUser,
+  demoteExtraHeads,
+  repairHeadUniqueness,
   ensureSingleHead,
 };

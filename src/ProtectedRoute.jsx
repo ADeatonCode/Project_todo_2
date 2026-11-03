@@ -10,11 +10,16 @@ export function readTodoUser() {
   }
 }
 
+export function writeTodoUser(updates) {
+  const current = readTodoUser() || {};
+  const next = { ...current, ...updates };
+  localStorage.setItem('todoUser', JSON.stringify(next));
+  window.dispatchEvent(new Event('todoUserUpdated'));
+  return next;
+}
+
 export function isHeadUser(user = readTodoUser()) {
-  if (!user) return false;
-  if (user.role === 'head') return true;
-  const email = String(user.email || '').toLowerCase().trim();
-  return email === 'acdelgato@gmail.com';
+  return user?.role === 'head';
 }
 
 export function isAdminUser(user = readTodoUser()) {

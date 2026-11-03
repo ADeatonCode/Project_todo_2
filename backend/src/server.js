@@ -12,7 +12,15 @@ const groupRoutes = require("./routes/groupRoutes.js");
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
-    console.log("mongodb connected")
+    console.log("mongodb connected");
+    const User = require("./models/user.js");
+    const { repairHeadUniqueness } = require("./utils/admin.js");
+    await repairHeadUniqueness(User);
+    try {
+      await User.syncIndexes();
+    } catch (indexErr) {
+      console.error("Could not sync unique head index:", indexErr.message);
+    }
   } catch (err) {
     console.error("mongodb connection error: ", err);
   }

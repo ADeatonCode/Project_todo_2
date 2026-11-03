@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const User = require("../models/user");
 const Todo = require("../models/Todo");
 const Group = require("../models/Group");
@@ -100,6 +101,85 @@ const removeUser = async (req, res) => {
   }
 };
 
+const makeHead = async (req, res) => {
+  try {
+    if (!isHead(req.user)) {
+      return res.status(403).send({ message: "Only the head admin can transfer the head role" });
+    }
+
+    const { id } = req.params;
+    if (!id || String(id) === String(req.user._id)) {
+      return res.status(400).send({ message: "You are already the head admin" });
+    }
+
+    const target = await User.findById(id);
+    if (!target) {
+      return res.status(404).send({ message: "User not found" });
+    }
+    if (target.banned) {
+      return res.status(403).send({ message: "Cannot transfer head to a banned user" });
+    }
+    if (target.role === "head") {
+      return res.status(400).send({ message: "That user is already the head admin" });
+    }
+
+    const session = await mongoose.startSession();
+    let headUser = target;
+    let formerHead;
+    try {
+      await session.withTransaction(async () => {
+        const liveTarget = await User.findById(id).session(session);
+        if (!liveTarget) {
+          const err = new Error("User not found");
+          err.status = 404;
+          throw err;
+        }
+        if (liveTarget.banned) {
+          const err = new Error("Cannot transfer head to a banned user");
+          err.status = 403;
+          throw err;
+        }
+
+        await User.updateMany(
+          { role: "head" },
+          { $set: { role: "admin" } },
+          { session }
+        );
+        liveTarget.role = "head";
+        await liveTarget.save({ session });
+        formerHead = await User.findById(req.user._id).session(session);
+        headUser = liveTarget;
+      });
+    } catch (error) {
+      if (error.status) {
+        return res.status(error.status).send({ message: error.message });
+      }
+      const noTransactions = error.code === 20 || /replica set|Transaction numbers/i.test(error.message || "");
+      if (!noTransactions) {
+        throw error;
+      }
+      await User.updateMany({ role: "head" }, { $set: { role: "admin" } });
+      target.role = "head";
+      await target.save();
+      formerHead = await User.findById(req.user._id);
+      headUser = target;
+    } finally {
+      await session.endSession();
+    }
+
+    res.status(200).send({
+      head: publicUser(headUser),
+      formerHead: publicUser(formerHead),
+    });
+  } catch (error) {
+    console.error("Error transferring head:", error);
+    if (error.code === 11000) {
+      return res.status(409).send({ message: "Only one head admin is allowed" });
+    }
+    res.status(500).send({ message: "Internal server error" });
+  }
+};
+
 const resetUserTasks = async (req, res) => {
   try {
     const { id } = req.params;
@@ -119,6 +199,7 @@ const resetUserTasks = async (req, res) => {
 module.exports = {
   listUsers,
   patchAdminUser,
+  makeHead,
   removeUser,
   resetUserTasks,
 };
