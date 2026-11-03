@@ -19,6 +19,19 @@ const todoSchema = new mongoose.Schema({
     ref: "Group",
   },
   deletedAt: { type: Date, default: null },
+  dueDate: { type: Date, default: null },
+  repeatEvery: { type: Number, default: 0 },
+  repeatUnit: {
+    type: String,
+    enum: ["none", "hours", "days", "weeks", "months"],
+    default: "none",
+  },
+  showBeforeValue: { type: Number, default: 0 },
+  showBeforeUnit: {
+    type: String,
+    enum: ["hours", "days"],
+    default: "days",
+  },
   tags: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "Tag",

@@ -133,12 +133,56 @@ function formatDeletedAt(value) {
   return date.toLocaleString();
 }
 
+function formatDueDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString();
+}
+
+function toDateTimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fromDateTimeLocal(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function isUpcomingTask(task) {
+  if (task?.upcoming) return true;
+  if (!task?.dueDate) return false;
+  const due = new Date(task.dueDate).getTime();
+  if (Number.isNaN(due)) return false;
+  const value = Number(task.showBeforeValue) || 0;
+  const unitMs = task.showBeforeUnit === 'hours' ? 3600000 : 86400000;
+  return Date.now() < due - value * unitMs;
+}
+
+function repeatLabel(task) {
+  const every = Number(task.repeatEvery) || 0;
+  const unit = task.repeatUnit;
+  if (!unit || unit === 'none' || every <= 0) return '';
+  const singular = { hours: 'hour', days: 'day', weeks: 'week', months: 'month' };
+  const word = every === 1 ? (singular[unit] || unit) : unit;
+  return `Every ${every} ${word}`;
+}
+
 function taskSecondary(task, admin) {
   const parts = [];
+  if (admin && isUpcomingTask(task)) parts.push('Upcoming');
   if (admin) parts.push(ownerLabel(task));
   if (task.groupId?.name) parts.push(admin ? `Group: ${task.groupId.name}` : `Shared with ${task.groupId.name}`);
   const assigned = assigneeSummary(task);
   if (assigned) parts.push(`Assigned: ${assigned}`);
+  if (task.dueDate) parts.push(`Due ${formatDueDate(task.dueDate)}`);
+  const repeat = repeatLabel(task);
+  if (repeat) parts.push(repeat);
   return parts.join(' · ') || undefined;
 }
 
@@ -168,6 +212,16 @@ export default function Tasks() {
   const [editAssignees, setEditAssignees] = useState([]);
   const [editGroupId, setEditGroupId] = useState('');
   const [editPriority, setEditPriority] = useState(false);
+  const [newDueDate, setNewDueDate] = useState('');
+  const [newRepeatEvery, setNewRepeatEvery] = useState(1);
+  const [newRepeatUnit, setNewRepeatUnit] = useState('none');
+  const [newShowBeforeValue, setNewShowBeforeValue] = useState(0);
+  const [newShowBeforeUnit, setNewShowBeforeUnit] = useState('days');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editRepeatEvery, setEditRepeatEvery] = useState(1);
+  const [editRepeatUnit, setEditRepeatUnit] = useState('none');
+  const [editShowBeforeValue, setEditShowBeforeValue] = useState(0);
+  const [editShowBeforeUnit, setEditShowBeforeUnit] = useState('days');
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [expandedTasks, setExpandedTasks] = useState(new Set());
@@ -201,12 +255,27 @@ export default function Tasks() {
     try {
       const tagIds = selectedTags.map((tag) => tag._id);
       const assigneeIds = selectedAssignees.map((user) => user._id);
-      const data = await createTodo(newTask, '', tagIds, newProject.trim(), selectedGroupId, assigneeIds);
-      setTasks([...tasks, { ...data, subtasks: [] }]);
+      const data = await createTodo(newTask, '', tagIds, newProject.trim(), selectedGroupId, assigneeIds, {
+        dueDate: fromDateTimeLocal(newDueDate),
+        repeatEvery: newRepeatUnit === 'none' ? 0 : Number(newRepeatEvery) || 0,
+        repeatUnit: newRepeatUnit,
+        showBeforeValue: Number(newShowBeforeValue) || 0,
+        showBeforeUnit: newShowBeforeUnit,
+      });
+      if (admin || !isUpcomingTask(data)) {
+        setTasks([...tasks, { ...data, subtasks: [] }]);
+      } else {
+        alert('Saved. This task stays hidden until its show-before window.');
+      }
       setNewTask('');
       setNewProject('');
       setSelectedTags([]);
       setSelectedGroupId('');
+      setNewDueDate('');
+      setNewRepeatEvery(1);
+      setNewRepeatUnit('none');
+      setNewShowBeforeValue(0);
+      setNewShowBeforeUnit('days');
       const me = userOptions.find((user) => String(user._id) === meId);
       setSelectedAssignees(me ? [me] : []);
     } catch (error) {
@@ -248,13 +317,17 @@ export default function Tasks() {
     try {
       const updated = await updateTodo(id, updates);
       if (updated && updated._id) {
-        setTasks((prev) =>
-          prev.map((t) =>
-            (t._id || t.id) === id
-              ? { ...t, ...updated, subtasks: t.subtasks || [] }
-              : t
-          )
-        );
+        if (!admin && isUpcomingTask(updated)) {
+          setTasks((prev) => prev.filter((t) => (t._id || t.id) !== id));
+        } else {
+          setTasks((prev) =>
+            prev.map((t) =>
+              (t._id || t.id) === id
+                ? { ...t, ...updated, subtasks: t.subtasks || [] }
+                : t
+            )
+          );
+        }
       }
     } catch (error) {
       console.error('Error updating task:', error);
@@ -284,6 +357,11 @@ export default function Tasks() {
     setEditAssignees((task.assignedTo || []).filter((person) => typeof person === 'object'));
     setEditGroupId(task.groupId?._id || task.groupId || '');
     setEditPriority(!!task.priority);
+    setEditDueDate(toDateTimeLocal(task.dueDate));
+    setEditRepeatEvery(Number(task.repeatEvery) > 0 ? Number(task.repeatEvery) : 1);
+    setEditRepeatUnit(task.repeatUnit || 'none');
+    setEditShowBeforeValue(Number(task.showBeforeValue) || 0);
+    setEditShowBeforeUnit(task.showBeforeUnit || 'days');
     setEditOpen(true);
   };
 
@@ -302,6 +380,11 @@ export default function Tasks() {
         assignedTo: editAssignees.map((user) => user._id),
         groupId: editGroupId || null,
         priority: editPriority,
+        dueDate: fromDateTimeLocal(editDueDate),
+        repeatEvery: editRepeatUnit === 'none' ? 0 : Number(editRepeatEvery) || 0,
+        repeatUnit: editRepeatUnit,
+        showBeforeValue: Number(editShowBeforeValue) || 0,
+        showBeforeUnit: editShowBeforeUnit,
       });
       setEditOpen(false);
       await refreshTasks();
@@ -469,6 +552,71 @@ export default function Tasks() {
     getTodos({ trash: true }).then((data) => setTrashTasks(Array.isArray(data) ? data : []));
   }, [showTrash, canViewTrash]);
 
+  const renderScheduleFields = (values, setters) => (
+    <>
+      <TextField
+        fullWidth
+        type="datetime-local"
+        label="Due date"
+        value={values.dueDate}
+        onChange={(e) => setters.setDueDate(e.target.value)}
+        InputLabelProps={{ shrink: true }}
+      />
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <TextField
+          type="number"
+          label="Repeat every"
+          value={values.repeatEvery}
+          onChange={(e) => setters.setRepeatEvery(e.target.value)}
+          inputProps={{ min: 1, step: 1 }}
+          sx={{ width: 140 }}
+          disabled={values.repeatUnit === 'none'}
+        />
+        <FormControl sx={{ minWidth: 160, flexGrow: 1 }}>
+          <InputLabel id={`${values.idPrefix}-repeat-unit`}>Repeat unit</InputLabel>
+          <Select
+            labelId={`${values.idPrefix}-repeat-unit`}
+            label="Repeat unit"
+            value={values.repeatUnit}
+            onChange={(e) => setters.setRepeatUnit(e.target.value)}
+          >
+            <MenuItem value="none">Does not repeat</MenuItem>
+            <MenuItem value="hours">Hours</MenuItem>
+            <MenuItem value="days">Days</MenuItem>
+            <MenuItem value="weeks">Weeks</MenuItem>
+            <MenuItem value="months">Months</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <TextField
+          type="number"
+          label="Show this task"
+          value={values.showBeforeValue}
+          onChange={(e) => setters.setShowBeforeValue(e.target.value)}
+          inputProps={{ min: 0, step: 1 }}
+          sx={{ width: 150 }}
+          disabled={!values.dueDate}
+        />
+        <FormControl sx={{ minWidth: 140, flexGrow: 1 }} disabled={!values.dueDate}>
+          <InputLabel id={`${values.idPrefix}-show-before-unit`}>Before due</InputLabel>
+          <Select
+            labelId={`${values.idPrefix}-show-before-unit`}
+            label="Before due"
+            value={values.showBeforeUnit}
+            onChange={(e) => setters.setShowBeforeUnit(e.target.value)}
+          >
+            <MenuItem value="hours">Hours</MenuItem>
+            <MenuItem value="days">Days</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        Task stays hidden until this long before the due date. 0 means it appears at the due time.
+      </Typography>
+    </>
+  );
+
   const renderAssigneePicker = (value, onChange) => (
     <Autocomplete
       multiple
@@ -530,6 +678,23 @@ export default function Tasks() {
               </Select>
             </FormControl>
             {renderAssigneePicker(selectedAssignees, setSelectedAssignees)}
+            {renderScheduleFields(
+              {
+                idPrefix: 'create',
+                dueDate: newDueDate,
+                repeatEvery: newRepeatEvery,
+                repeatUnit: newRepeatUnit,
+                showBeforeValue: newShowBeforeValue,
+                showBeforeUnit: newShowBeforeUnit,
+              },
+              {
+                setDueDate: setNewDueDate,
+                setRepeatEvery: setNewRepeatEvery,
+                setRepeatUnit: setNewRepeatUnit,
+                setShowBeforeValue: setNewShowBeforeValue,
+                setShowBeforeUnit: setNewShowBeforeUnit,
+              }
+            )}
 
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Autocomplete
@@ -586,7 +751,7 @@ export default function Tasks() {
           </Box>
           {admin && (
             <Alert severity="info">
-              Admin view: you can see and edit every user&apos;s tasks. Owner is labeled on each task.
+              Admin view: you can see and edit every user&apos;s tasks, including upcoming scheduled ones. Owner is labeled on each task.
             </Alert>
           )}
           {tasks.length === 0 ? (
@@ -653,7 +818,14 @@ export default function Tasks() {
                                 title="Mark complete"
                               />
                               <ListItemText
-                                primary={task.title}
+                                primary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                    <span>{task.title}</span>
+                                    {admin && isUpcomingTask(task) && (
+                                      <Chip size="small" label="Upcoming" color="info" variant="outlined" />
+                                    )}
+                                  </Box>
+                                }
                                 secondary={taskSecondary(task, admin)}
                                 sx={{ textDecoration: task.completed ? 'line-through' : 'none' }}
                               />
@@ -857,6 +1029,23 @@ export default function Tasks() {
               </Select>
             </FormControl>
             {renderAssigneePicker(editAssignees, setEditAssignees)}
+            {renderScheduleFields(
+              {
+                idPrefix: 'edit',
+                dueDate: editDueDate,
+                repeatEvery: editRepeatEvery,
+                repeatUnit: editRepeatUnit,
+                showBeforeValue: editShowBeforeValue,
+                showBeforeUnit: editShowBeforeUnit,
+              },
+              {
+                setDueDate: setEditDueDate,
+                setRepeatEvery: setEditRepeatEvery,
+                setRepeatUnit: setEditRepeatUnit,
+                setShowBeforeValue: setEditShowBeforeValue,
+                setShowBeforeUnit: setEditShowBeforeUnit,
+              }
+            )}
             <Autocomplete
               multiple
               options={availableTags}

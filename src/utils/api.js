@@ -45,7 +45,7 @@ const getTodos = async (options = {}) => {
     }
 }
 
-const createTodo = async (title, description = "", tags = [], project = "", groupId = "", assignedTo = []) => {
+const createTodo = async (title, description = "", tags = [], project = "", groupId = "", assignedTo = [], schedule = {}) => {
     try {
         const body = {
             title: title,
@@ -58,6 +58,23 @@ const createTodo = async (title, description = "", tags = [], project = "", grou
         }
         if (Array.isArray(assignedTo) && assignedTo.length > 0) {
             body.assignedTo = assignedTo;
+        }
+        if (schedule && typeof schedule === "object") {
+            if (Object.prototype.hasOwnProperty.call(schedule, "dueDate")) {
+                body.dueDate = schedule.dueDate;
+            }
+            if (Object.prototype.hasOwnProperty.call(schedule, "repeatEvery")) {
+                body.repeatEvery = schedule.repeatEvery;
+            }
+            if (Object.prototype.hasOwnProperty.call(schedule, "repeatUnit")) {
+                body.repeatUnit = schedule.repeatUnit;
+            }
+            if (Object.prototype.hasOwnProperty.call(schedule, "showBeforeValue")) {
+                body.showBeforeValue = schedule.showBeforeValue;
+            }
+            if (Object.prototype.hasOwnProperty.call(schedule, "showBeforeUnit")) {
+                body.showBeforeUnit = schedule.showBeforeUnit;
+            }
         }
         const response = await http.post(`${API}/api/todos/create`, body);
         return response.data;

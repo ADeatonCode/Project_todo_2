@@ -23,7 +23,15 @@ const ALLOWED_UPDATE_FIELDS = [
   "priority",
   "groupId",
   "assignedTo",
+  "dueDate",
+  "repeatEvery",
+  "repeatUnit",
+  "showBeforeValue",
+  "showBeforeUnit",
 ];
+
+const REPEAT_UNITS = ["none", "hours", "days", "weeks", "months"];
+const SHOW_BEFORE_UNITS = ["hours", "days"];
 
 function idString(value) {
   if (!value) return "";
@@ -76,6 +84,131 @@ function activeTodoFilter(user) {
     return notDeletedFilter();
   }
   return { $and: [scope, notDeletedFilter()] };
+}
+
+function parseNonNegativeNumber(value, fallback = 0) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return fallback;
+  return number;
+}
+
+function parseRepeatEvery(value) {
+  return Math.floor(parseNonNegativeNumber(value, 0));
+}
+
+function parseRepeatUnit(value) {
+  const unit = String(value || "none").toLowerCase();
+  return REPEAT_UNITS.includes(unit) ? unit : "none";
+}
+
+function parseShowBeforeValue(value) {
+  return parseNonNegativeNumber(value, 0);
+}
+
+function parseShowBeforeUnit(value) {
+  const unit = String(value || "days").toLowerCase();
+  return SHOW_BEFORE_UNITS.includes(unit) ? unit : "days";
+}
+
+function parseDueDate(value) {
+  if (value === "" || value === null || value === undefined) return { dueDate: null };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { error: { status: 400, message: "Invalid due date" } };
+  }
+  return { dueDate: date };
+}
+
+function showBeforeMs(todo) {
+  const value = parseShowBeforeValue(todo && todo.showBeforeValue);
+  const unitMs = (todo && todo.showBeforeUnit) === "hours" ? 3600000 : 86400000;
+  return value * unitMs;
+}
+
+function isVisibleNow(todo, now = new Date()) {
+  if (!todo || !todo.dueDate) return true;
+  const due = new Date(todo.dueDate).getTime();
+  if (Number.isNaN(due)) return true;
+  return now.getTime() >= due - showBeforeMs(todo);
+}
+
+function visibleNowFilter(now = new Date()) {
+  return {
+    $or: [
+      { dueDate: null },
+      { dueDate: { $exists: false } },
+      {
+        $expr: {
+          $lte: [
+            {
+              $subtract: [
+                "$dueDate",
+                {
+                  $multiply: [
+                    { $ifNull: ["$showBeforeValue", 0] },
+                    { $cond: [{ $eq: ["$showBeforeUnit", "hours"] }, 3600000, 86400000] },
+                  ],
+                },
+              ],
+            },
+            now,
+          ],
+        },
+      },
+    ],
+  };
+}
+
+function listTodoFilter(user) {
+  const active = activeTodoFilter(user);
+  if (isStaff(user)) return active;
+  return { $and: [active, visibleNowFilter()] };
+}
+
+function addRepeat(fromDate, every, unit) {
+  const date = new Date(fromDate);
+  const amount = Math.max(1, parseRepeatEvery(every) || 1);
+  if (unit === "hours") date.setTime(date.getTime() + amount * 3600000);
+  else if (unit === "days") date.setDate(date.getDate() + amount);
+  else if (unit === "weeks") date.setDate(date.getDate() + amount * 7);
+  else if (unit === "months") date.setMonth(date.getMonth() + amount);
+  return date;
+}
+
+function withUpcomingFlag(todos) {
+  return todos.map((todo) => {
+    const json = typeof todo.toObject === "function" ? todo.toObject() : { ...todo };
+    json.upcoming = !isVisibleNow(json);
+    return json;
+  });
+}
+
+function readSchedule(body) {
+  const schedule = {
+    dueDate: undefined,
+    repeatEvery: undefined,
+    repeatUnit: undefined,
+    showBeforeValue: undefined,
+    showBeforeUnit: undefined,
+  };
+  if (Object.prototype.hasOwnProperty.call(body || {}, "dueDate")) {
+    const parsed = parseDueDate(body.dueDate);
+    if (parsed.error) return parsed;
+    schedule.dueDate = parsed.dueDate;
+  }
+  if (Object.prototype.hasOwnProperty.call(body || {}, "repeatEvery")) {
+    schedule.repeatEvery = parseRepeatEvery(body.repeatEvery);
+  }
+  if (Object.prototype.hasOwnProperty.call(body || {}, "repeatUnit")) {
+    schedule.repeatUnit = parseRepeatUnit(body.repeatUnit);
+  }
+  if (Object.prototype.hasOwnProperty.call(body || {}, "showBeforeValue")) {
+    schedule.showBeforeValue = parseShowBeforeValue(body.showBeforeValue);
+  }
+  if (Object.prototype.hasOwnProperty.call(body || {}, "showBeforeUnit")) {
+    schedule.showBeforeUnit = parseShowBeforeUnit(body.showBeforeUnit);
+  }
+  return schedule;
 }
 
 async function trashTodoFilter(user) {
@@ -180,6 +313,11 @@ const createTodo = async (req, res) => {
       return res.status(400).send({ message: "Task contains inappropriate language" });
     }
 
+    const schedule = readSchedule(req.body);
+    if (schedule.error) {
+      return res.status(schedule.error.status).send({ message: schedule.error.message });
+    }
+
     let resolvedGroupId;
     if (groupId) {
       const resolved = await resolveGroupId(req.user, groupId);
@@ -200,9 +338,14 @@ const createTodo = async (req, res) => {
       assignedTo: assignees,
       groupId: resolvedGroupId,
       deletedAt: null,
+      dueDate: schedule.dueDate === undefined ? null : schedule.dueDate,
+      repeatEvery: schedule.repeatEvery === undefined ? 0 : schedule.repeatEvery,
+      repeatUnit: schedule.repeatUnit === undefined ? "none" : schedule.repeatUnit,
+      showBeforeValue: schedule.showBeforeValue === undefined ? 0 : schedule.showBeforeValue,
+      showBeforeUnit: schedule.showBeforeUnit === undefined ? "days" : schedule.showBeforeUnit,
     });
     const populated = await Todo.findById(addTodo._id).populate(TODO_POPULATE);
-    res.status(201).send(populated);
+    res.status(201).send(withUpcomingFlag([populated])[0]);
   } catch (error) {
     console.error("Error creating todo:", error);
     res.status(500).send({ message: "Internal server error" });
@@ -243,9 +386,9 @@ const getTodos = async (req, res) => {
   try {
     await purgeExpiredTrash();
     const trash = String(req.query.trash || "") === "1" || String(req.query.trash || "").toLowerCase() === "true";
-    const filter = trash ? await trashTodoFilter(req.user) : activeTodoFilter(req.user);
+    const filter = trash ? await trashTodoFilter(req.user) : listTodoFilter(req.user);
     const todos = await Todo.find(filter).populate(TODO_POPULATE);
-    res.status(200).send(todos);
+    res.status(200).send(withUpcomingFlag(todos));
   } catch (error) {
     console.error("Error fetching todos:", error);
     res.status(500).send({ message: "Internal server error" });
@@ -325,13 +468,32 @@ const updateTodo = async (req, res) => {
       updates.groupId = resolved.groupId;
     }
 
+    const schedule = readSchedule(updates);
+    if (schedule.error) {
+      return res.status(schedule.error.status).send({ message: schedule.error.message });
+    }
+    if (schedule.dueDate !== undefined) updates.dueDate = schedule.dueDate;
+    if (schedule.repeatEvery !== undefined) updates.repeatEvery = schedule.repeatEvery;
+    if (schedule.repeatUnit !== undefined) updates.repeatUnit = schedule.repeatUnit;
+    if (schedule.showBeforeValue !== undefined) updates.showBeforeValue = schedule.showBeforeValue;
+    if (schedule.showBeforeUnit !== undefined) updates.showBeforeUnit = schedule.showBeforeUnit;
+
+    const nextRepeatUnit = updates.repeatUnit !== undefined ? updates.repeatUnit : todo.repeatUnit;
+    const nextRepeatEvery = updates.repeatEvery !== undefined ? updates.repeatEvery : todo.repeatEvery;
+    const markingComplete = updates.completed === true && !todo.completed;
+    if (markingComplete && nextRepeatUnit && nextRepeatUnit !== "none" && parseRepeatEvery(nextRepeatEvery) > 0) {
+      const currentDue = updates.dueDate !== undefined ? updates.dueDate : todo.dueDate;
+      updates.dueDate = addRepeat(currentDue || new Date(), nextRepeatEvery, nextRepeatUnit);
+      updates.completed = false;
+    }
+
     const data = await Todo.findByIdAndUpdate(id, updates, {
       new: true,
       runValidators: true,
     }).populate(TODO_POPULATE);
 
     if (data != null) {
-      res.status(200).send(data);
+      res.status(200).send(withUpcomingFlag([data])[0]);
     } else {
       res.status(404).send({ message: "Todo not found" });
     }
@@ -343,7 +505,7 @@ const updateTodo = async (req, res) => {
 
 const getTotalTasks = async (req, res) => {
   try {
-    const count = await Todo.countDocuments(activeTodoFilter(req.user));
+    const count = await Todo.countDocuments(listTodoFilter(req.user));
     res.status(200).send({ totalTasks: count });
   } catch (err) {
     console.error(err);
