@@ -1,6 +1,7 @@
 const Group = require("../models/Group");
 const User = require("../models/user");
 const Todo = require("../models/Todo");
+const { isStaff } = require("../utils/admin");
 
 const GROUP_POPULATE = [
   { path: "members", select: "name email" },
@@ -8,14 +9,14 @@ const GROUP_POPULATE = [
 ];
 
 function isGroupAdminOrCreator(user, group) {
-  if (user.role === "admin") return true;
+  if (isStaff(user)) return true;
   return String(group.createdBy) === String(user._id) ||
     (group.createdBy && group.createdBy._id && String(group.createdBy._id) === String(user._id));
 }
 
 const getGroups = async (req, res) => {
   try {
-    const filter = req.user.role === "admin"
+    const filter = isStaff(req.user)
       ? {}
       : { members: req.user._id };
     const groups = await Group.find(filter).populate(GROUP_POPULATE).sort({ name: 1 });

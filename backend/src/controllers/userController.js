@@ -1,7 +1,15 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const User = require("../models/user.js");
-const { isAdminEmail, publicUser, authUser } = require("../utils/admin.js");
+const {
+  isAdminEmail,
+  isHead,
+  isStaff,
+  publicUser,
+  authUser,
+  normalizeEmail,
+  ensureSingleHead,
+} = require("../utils/admin.js");
 
 function looksLikeBcrypt(stored) {
   return typeof stored === "string" && stored.startsWith("$2");
@@ -9,6 +17,18 @@ function looksLikeBcrypt(stored) {
 
 function newSessionToken() {
   return crypto.randomBytes(32).toString("hex");
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function findUserByEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+  return User.findOne({
+    email: { $regex: new RegExp(`^${escapeRegex(normalized)}$`, "i") },
+  });
 }
 
 async function verifyAndMigratePassword(user, password) {
@@ -23,35 +43,16 @@ async function verifyAndMigratePassword(user, password) {
   return false;
 }
 
-async function applyAdminRole(user) {
-  let changed = false;
-  if (isAdminEmail(user.email)) {
-    if (user.role !== "admin") {
-      user.role = "admin";
-      changed = true;
-    }
-  } else if (!user.role) {
-    user.role = "user";
-    changed = true;
-  }
-  if (typeof user.banned !== "boolean") {
-    user.banned = false;
-    changed = true;
-  }
-  if (changed) {
-    await user.save();
-  }
-  return user;
-}
-
 const createUser = async (req, res) => {
-  const { name, email, password } = req.body;
+  const name = req.body.name;
+  const email = normalizeEmail(req.body.email);
+  const { password } = req.body;
 
   try {
     if (!password || typeof password !== "string") {
       return res.status(400).send({ message: "Password required" });
     }
-    const role = isAdminEmail(email) ? "admin" : "user";
+    const role = isAdminEmail(email) ? "head" : "user";
     const hashed = await bcrypt.hash(password, 10);
     const addUser = await User.create({
       name,
@@ -61,6 +62,12 @@ const createUser = async (req, res) => {
       role,
       banned: false,
     });
+    if (role === "head") {
+      await User.updateMany(
+        { _id: { $ne: addUser._id }, role: "head" },
+        { $set: { role: "user" } }
+      );
+    }
     res.status(201).send(authUser(addUser));
   } catch (error) {
     console.error("Error creating user:", error);
@@ -72,17 +79,18 @@ const createUser = async (req, res) => {
 };
 
 const loginUser = async (req, res) => {
-  const { email, password } = req.body;
+  const email = normalizeEmail(req.body.email);
+  const { password } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    const user = await findUserByEmail(email);
     if (!user || !(await verifyAndMigratePassword(user, password))) {
       return res.status(401).send({ message: "Invalid email or password" });
     }
     if (user.banned) {
       return res.status(403).send({ message: "This account is banned" });
     }
-    await applyAdminRole(user);
+    await ensureSingleHead(User, user);
     user.sessionToken = newSessionToken();
     await user.save();
     res.status(200).send(authUser(user));
@@ -95,15 +103,24 @@ const loginUser = async (req, res) => {
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedUser = await User.findByIdAndDelete(id);
-
-    if (deletedUser) {
-      res.status(200).send({ message: "User deleted" });
-    } else {
-      res.status(404).send({ message: "User not found" });
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).send({ message: "User not found" });
     }
+    if (String(user._id) === String(req.user._id)) {
+      return res.status(403).send({ message: "You cannot remove your own account" });
+    }
+    if (isHead(user)) {
+      return res.status(403).send({ message: "Cannot modify the head admin" });
+    }
+    if (!isHead(req.user) && isStaff(user)) {
+      return res.status(403).send({ message: "Admins cannot modify other admins" });
+    }
+    await User.findByIdAndDelete(id);
+    res.status(200).send({ message: "User deleted" });
   } catch (err) {
     console.error(err);
+    res.status(500).send({ message: "Internal server error" });
   }
 };
 
@@ -123,6 +140,8 @@ const updateUser = async (req, res) => {
     const updates = { ...req.body };
     delete updates.password;
     delete updates.sessionToken;
+    delete updates.role;
+    delete updates.banned;
     const data = await User.findByIdAndUpdate(id, updates, { new: true, runValidators: true }).select("-password -sessionToken");
     if (data != null) {
       res.status(200).send(publicUser(data));

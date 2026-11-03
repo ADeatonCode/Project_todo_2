@@ -1,4 +1,5 @@
 const User = require("../models/user");
+const { isStaff, isHead, isAdminEmail, ensureSingleHead } = require("../utils/admin");
 
 function readBearerToken(req) {
   const header = req.header("Authorization") || "";
@@ -25,6 +26,9 @@ const requireAuth = async (req, res, next) => {
     if (user.banned) {
       return res.status(403).send({ message: "This account is banned" });
     }
+    if (isAdminEmail(user.email) && user.role !== "head") {
+      await ensureSingleHead(User, user);
+    }
     req.user = user;
     next();
   } catch (error) {
@@ -34,10 +38,17 @@ const requireAuth = async (req, res, next) => {
 };
 
 const requireAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== "admin") {
+  if (!isStaff(req.user)) {
     return res.status(403).send({ message: "Admin only" });
   }
   next();
 };
 
-module.exports = { requireAuth, requireAdmin };
+const requireHead = (req, res, next) => {
+  if (!isHead(req.user)) {
+    return res.status(403).send({ message: "Head admin only" });
+  }
+  next();
+};
+
+module.exports = { requireAuth, requireAdmin, requireHead };

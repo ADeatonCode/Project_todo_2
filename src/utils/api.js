@@ -193,6 +193,16 @@ const setUserBanned = async (id, banned) => {
     }
 }
 
+const setUserRole = async (id, role) => {
+    try {
+        const response = await http.patch(`${API}/api/user/admin/users/${id}`, { role });
+        return response.data;
+    } catch (error) {
+        console.error("Error updating role:", error);
+        throw error;
+    }
+}
+
 const removeAdminUser = async (id) => {
     try {
         const response = await http.delete(`${API}/api/user/admin/users/${id}`);
@@ -228,6 +238,7 @@ export {
     deleteGroup,
     getAdminUsers,
     setUserBanned,
+    setUserRole,
     removeAdminUser,
     resetUserTasks,
 };

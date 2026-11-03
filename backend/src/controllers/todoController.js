@@ -1,6 +1,7 @@
 const Todo = require("../models/Todo");
 const Group = require("../models/Group");
 const { containsInappropriateLanguage } = require("../utils/languageFilter");
+const { isStaff } = require("../utils/admin");
 
 const TODO_POPULATE = [
   { path: "tags" },
@@ -24,15 +25,15 @@ function isGroupMember(user, todo) {
 }
 
 function canToggleTask(user, todo) {
-  return user.role === "admin" || isOwner(user, todo) || isGroupMember(user, todo);
+  return isStaff(user) || isOwner(user, todo) || isGroupMember(user, todo);
 }
 
 function canFullyEditTask(user, todo) {
-  return user.role === "admin" || isOwner(user, todo);
+  return isStaff(user) || isOwner(user, todo);
 }
 
 function scopedTodoFilter(user) {
-  if (user.role === "admin") {
+  if (isStaff(user)) {
     return {};
   }
   return {
@@ -62,7 +63,7 @@ const createTodo = async (req, res) => {
         return res.status(400).send({ message: "Group not found" });
       }
       const isMember = group.members.some((m) => String(m) === String(req.user._id));
-      if (!isMember && req.user.role !== "admin") {
+      if (!isMember && !isStaff(req.user)) {
         return res.status(403).send({ message: "Not a member of this group" });
       }
       resolvedGroupId = group._id;
@@ -152,7 +153,7 @@ const updateTodo = async (req, res) => {
         return res.status(400).send({ message: "Group not found" });
       }
       const isMember = group.members.some((m) => String(m) === String(req.user._id));
-      if (!isMember && req.user.role !== "admin") {
+      if (!isMember && !isStaff(req.user)) {
         return res.status(403).send({ message: "Not a member of this group" });
       }
     }

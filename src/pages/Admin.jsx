@@ -14,7 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import Card from '../components/Card';
-import { readTodoUser } from '../ProtectedRoute';
+import { isHeadUser, readTodoUser } from '../ProtectedRoute';
 import {
   addGroupMember,
   createGroup,
@@ -24,7 +24,28 @@ import {
   removeAdminUser,
   resetUserTasks,
   setUserBanned,
+  setUserRole,
 } from '../utils/api';
+
+function isHeadAccount(user) {
+  if (!user) return false;
+  if (user.role === 'head') return true;
+  return String(user.email || '').toLowerCase().trim() === 'acdelgato@gmail.com';
+}
+
+function isStaffAccount(user) {
+  return user?.role === 'admin' || isHeadAccount(user);
+}
+
+function roleBadge(user) {
+  if (isHeadAccount(user)) {
+    return { label: 'Head admin', color: 'secondary' };
+  }
+  if (user?.role === 'admin') {
+    return { label: 'Admin', color: 'primary' };
+  }
+  return { label: 'User', color: 'default' };
+}
 
 function apiErrorMessage(error, fallback) {
   return error.response?.data?.message || error.message || fallback;
@@ -32,6 +53,7 @@ function apiErrorMessage(error, fallback) {
 
 export default function Admin() {
   const currentUser = readTodoUser();
+  const viewerIsHead = isHeadUser(currentUser);
   const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [groupName, setGroupName] = useState('');
@@ -62,12 +84,19 @@ export default function Admin() {
   }, []);
 
   const handleBan = async (user) => {
-    if (String(user._id) === String(currentUser?._id)) {
-      flash('You cannot ban your own account', 'error');
+    if (String(user._id) === String(currentUser?._id) || isHeadAccount(user)) {
+      flash('You cannot ban this account', 'error');
       return;
     }
+    const nextBanned = !user.banned;
+    const confirmed = window.confirm(
+      nextBanned
+        ? `Ban ${user.email}? They will not be able to log in.`
+        : `Unban ${user.email}?`
+    );
+    if (!confirmed) return;
     try {
-      const updated = await setUserBanned(user._id, !user.banned);
+      const updated = await setUserBanned(user._id, nextBanned);
       setUsers((prev) => prev.map((u) => (u._id === updated._id ? updated : u)));
       flash(updated.banned ? `Banned ${updated.email}` : `Unbanned ${updated.email}`);
     } catch (error) {
@@ -76,6 +105,10 @@ export default function Admin() {
   };
 
   const handleReset = async (user) => {
+    if (String(user._id) === String(currentUser?._id) || isHeadAccount(user)) {
+      flash('You cannot reset this account', 'error');
+      return;
+    }
     if (!window.confirm(`Delete all tasks owned by ${user.email}?`)) return;
     try {
       const result = await resetUserTasks(user._id);
@@ -85,9 +118,29 @@ export default function Admin() {
     }
   };
 
+  const handleRole = async (user, role) => {
+    if (!viewerIsHead || isHeadAccount(user) || String(user._id) === String(currentUser?._id)) {
+      flash('Only the head admin can change other users\' roles', 'error');
+      return;
+    }
+    const confirmed = window.confirm(
+      role === 'admin'
+        ? `Make ${user.email} an admin?`
+        : `Remove admin from ${user.email}?`
+    );
+    if (!confirmed) return;
+    try {
+      const updated = await setUserRole(user._id, role);
+      setUsers((prev) => prev.map((u) => (u._id === updated._id ? updated : u)));
+      flash(role === 'admin' ? `${updated.email} is now an admin` : `${updated.email} is now a user`);
+    } catch (error) {
+      flash(apiErrorMessage(error, 'Could not update role'), 'error');
+    }
+  };
+
   const handleRemove = async (user) => {
-    if (String(user._id) === String(currentUser?._id)) {
-      flash('You cannot remove your own account', 'error');
+    if (String(user._id) === String(currentUser?._id) || isHeadAccount(user)) {
+      flash('You cannot remove this account', 'error');
       return;
     }
     if (!window.confirm(`Remove ${user.email} and delete their tasks?`)) return;
@@ -165,31 +218,54 @@ export default function Admin() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user._id}>
-                    <TableCell>{user.name}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.role || 'user'}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={user.banned ? 'banned' : 'active'}
-                        color={user.banned ? 'error' : 'success'}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Button size="small" onClick={() => handleBan(user)}>
-                        {user.banned ? 'Unban' : 'Ban'}
-                      </Button>
-                      <Button size="small" onClick={() => handleReset(user)}>
-                        Reset
-                      </Button>
-                      <Button size="small" color="error" onClick={() => handleRemove(user)}>
-                        Remove
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {users.map((user) => {
+                  const isSelf = String(user._id) === String(currentUser?._id);
+                  const targetIsHead = isHeadAccount(user);
+                  const canModerate = !isSelf && !targetIsHead && (viewerIsHead || !isStaffAccount(user));
+                  const canChangeRole = viewerIsHead && !isSelf && !targetIsHead;
+                  const badge = roleBadge(user);
+                  return (
+                    <TableRow key={user._id}>
+                      <TableCell>{user.name}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        <Chip size="small" label={badge.label} color={badge.color} />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={user.banned ? 'banned' : 'active'}
+                          color={user.banned ? 'error' : 'success'}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        {canChangeRole && user.role !== 'admin' && (
+                          <Button size="small" onClick={() => handleRole(user, 'admin')}>
+                            Make admin
+                          </Button>
+                        )}
+                        {canChangeRole && user.role === 'admin' && (
+                          <Button size="small" onClick={() => handleRole(user, 'user')}>
+                            Remove admin
+                          </Button>
+                        )}
+                        {canModerate && (
+                          <>
+                            <Button size="small" onClick={() => handleBan(user)}>
+                              {user.banned ? 'Unban' : 'Ban'}
+                            </Button>
+                            <Button size="small" onClick={() => handleReset(user)}>
+                              Reset
+                            </Button>
+                            <Button size="small" color="error" onClick={() => handleRemove(user)}>
+                              Remove
+                            </Button>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </Paper>

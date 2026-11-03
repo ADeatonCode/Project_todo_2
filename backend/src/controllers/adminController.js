@@ -1,38 +1,82 @@
 const User = require("../models/user");
 const Todo = require("../models/Todo");
 const Group = require("../models/Group");
+const { isHead, isStaff, publicUser } = require("../utils/admin");
+
+function cannotModerate(req, target) {
+  if (!target) {
+    return { status: 404, message: "User not found" };
+  }
+  if (String(target._id) === String(req.user._id)) {
+    return { status: 403, message: "You cannot modify your own account" };
+  }
+  if (isHead(target)) {
+    return { status: 403, message: "Cannot modify the head admin" };
+  }
+  if (!isHead(req.user) && isStaff(target)) {
+    return { status: 403, message: "Admins cannot modify other admins" };
+  }
+  return null;
+}
 
 const listUsers = async (req, res) => {
   try {
     const users = await User.find().select("-password -sessionToken").sort({ email: 1 });
-    res.status(200).send(users);
+    res.status(200).send(users.map(publicUser));
   } catch (error) {
     console.error("Error listing users:", error);
     res.status(500).send({ message: "Internal server error" });
   }
 };
 
-const setBanned = async (req, res) => {
+const patchAdminUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { banned } = req.body;
+    const hasBanned = Object.prototype.hasOwnProperty.call(req.body || {}, "banned");
+    const hasRole = Object.prototype.hasOwnProperty.call(req.body || {}, "role");
 
-    if (String(id) === String(req.user._id)) {
-      return res.status(400).send({ message: "You cannot ban your own account" });
+    if (!hasBanned && !hasRole) {
+      return res.status(400).send({ message: "Nothing to update" });
     }
 
-    const user = await User.findByIdAndUpdate(
-      id,
-      { banned: !!banned },
-      { new: true, runValidators: true }
-    ).select("-password -sessionToken");
-
-    if (!user) {
+    const target = await User.findById(id);
+    if (!target) {
       return res.status(404).send({ message: "User not found" });
     }
-    res.status(200).send(user);
+
+    if (hasRole) {
+      if (!isHead(req.user)) {
+        return res.status(403).send({ message: "Only the head admin can change roles" });
+      }
+      if (isHead(target)) {
+        return res.status(403).send({ message: "Cannot demote the head admin" });
+      }
+      if (String(target._id) === String(req.user._id)) {
+        return res.status(403).send({ message: "You cannot change your own role" });
+      }
+
+      const role = String(req.body.role || "").toLowerCase().trim();
+      if (role === "head") {
+        return res.status(403).send({ message: "Cannot set role to head" });
+      }
+      if (role !== "admin" && role !== "user") {
+        return res.status(400).send({ message: "Role must be admin or user" });
+      }
+      target.role = role;
+    }
+
+    if (hasBanned) {
+      const blocked = cannotModerate(req, target);
+      if (blocked) {
+        return res.status(blocked.status).send({ message: blocked.message });
+      }
+      target.banned = !!req.body.banned;
+    }
+
+    await target.save();
+    res.status(200).send(publicUser(target));
   } catch (error) {
-    console.error("Error updating ban:", error);
+    console.error("Error updating user:", error);
     res.status(500).send({ message: "Internal server error" });
   }
 };
@@ -40,14 +84,10 @@ const setBanned = async (req, res) => {
 const removeUser = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (String(id) === String(req.user._id)) {
-      return res.status(400).send({ message: "You cannot remove your own account" });
-    }
-
     const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).send({ message: "User not found" });
+    const blocked = cannotModerate(req, user);
+    if (blocked) {
+      return res.status(blocked.status).send({ message: blocked.message });
     }
 
     await Todo.deleteMany({ userId: id });
@@ -63,9 +103,10 @@ const removeUser = async (req, res) => {
 const resetUserTasks = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await User.findById(id).select("-password -sessionToken");
-    if (!user) {
-      return res.status(404).send({ message: "User not found" });
+    const user = await User.findById(id);
+    const blocked = cannotModerate(req, user);
+    if (blocked) {
+      return res.status(blocked.status).send({ message: blocked.message });
     }
     const result = await Todo.deleteMany({ userId: id });
     res.status(200).send({ message: "User tasks reset", deletedCount: result.deletedCount });
@@ -77,7 +118,7 @@ const resetUserTasks = async (req, res) => {
 
 module.exports = {
   listUsers,
-  setBanned,
+  patchAdminUser,
   removeUser,
   resetUserTasks,
 };

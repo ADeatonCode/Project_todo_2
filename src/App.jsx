@@ -10,7 +10,7 @@ import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
 import Auth from './pages/Auth';
 import Admin from './pages/Admin';
-import ProtectedRoute, { AdminRoute, isAdminUser, readTodoUser } from './ProtectedRoute';
+import ProtectedRoute, { AdminRoute, isAdminUser, isHeadUser, readTodoUser } from './ProtectedRoute';
 
 export default function App() {
   const location = useLocation();
@@ -39,6 +39,7 @@ export default function App() {
   }
 
   const admin = isAdminUser(session);
+  const head = isHeadUser(session);
 
   return (
     <>
@@ -54,7 +55,7 @@ export default function App() {
           )}
           <Box sx={{ flexGrow: 1 }} />
           <Typography variant="body1" sx={{ mr: 2 }}>
-            {session.name}{admin ? ' (admin)' : ''}
+            {session.name}{head ? ' (head admin)' : admin ? ' (admin)' : ''}
           </Typography>
           <Button color="inherit" onClick={handleLogout}>Logout</Button>
         </Toolbar>
