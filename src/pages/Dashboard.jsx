@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Alert, Grid, Typography } from '@mui/material';
+import { Alert, Grid, Link, Typography } from '@mui/material';
 import { ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar } from 'recharts';
 import Card from '../components/Card';
 import { getTodos } from '../utils/api';
@@ -107,6 +107,14 @@ export default function Dashboard() {
         <Grid size={{ xs: 12 }}>
           <Alert severity="info">
             Admin view: these stats include every user&apos;s tasks (including unscoped older tasks with no owner).
+          </Alert>
+        </Grid>
+      )}
+      {!admin && (
+        <Grid size={{ xs: 12 }}>
+          <Alert severity="info">
+            Want admin privileges? Contact me at{' '}
+            <Link href="mailto:acdelgato@gmail.com">acdelgato@gmail.com</Link>.
           </Alert>
         </Grid>
       )}

@@ -117,9 +117,12 @@ export default function Auth() {
         transition={{ duration: 0.5 }}
       >
         <Typography variant="h4" align="center" gutterBottom>
-          Project TODO
+          Welcome
         </Typography>
-        
+        <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 2 }}>
+          Visitors are welcome to create an account and try the full task features. Your list is private.
+        </Typography>
+
         <Tabs value={tabValue} onChange={handleTabChange} centered sx={{ mb: 3 }}>
           <Tab label="Login" />
           <Tab label="Sign Up" />

@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const User = require("../models/user.js");
+const Todo = require("../models/Todo.js");
 const {
   isAdminEmail,
   isHead,
@@ -29,6 +30,47 @@ async function findUserByEmail(email) {
   return User.findOne({
     email: { $regex: new RegExp(`^${escapeRegex(normalized)}$`, "i") },
   });
+}
+
+async function seedSampleTodos(userId) {
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 2);
+  dueDate.setHours(17, 0, 0, 0);
+
+  await Todo.insertMany([
+    {
+      title: "Try adding a new task",
+      description: "This sample is yours to edit or delete.",
+      project: "Getting started",
+      userId,
+      assignedTo: [userId],
+      completed: false,
+      priority: false,
+    },
+    {
+      title: "Finish the weekly report",
+      description: "A priority sample so you can see the Priority flag.",
+      project: "Work",
+      userId,
+      assignedTo: [userId],
+      completed: false,
+      priority: true,
+    },
+    {
+      title: "Weekly planning check-in",
+      description: "Due soon and repeats so you can see dates and repeat.",
+      project: "Planning",
+      userId,
+      assignedTo: [userId],
+      completed: false,
+      priority: false,
+      dueDate,
+      showBeforeValue: 7,
+      showBeforeUnit: "days",
+      repeatEvery: 1,
+      repeatUnit: "weeks",
+    },
+  ]);
 }
 
 async function verifyAndMigratePassword(user, password) {
@@ -71,6 +113,11 @@ const createUser = async (req, res) => {
         { _id: { $ne: addUser._id }, role: "head" },
         { $set: { role: "admin" } }
       );
+    }
+    try {
+      await seedSampleTodos(addUser._id);
+    } catch (seedError) {
+      console.error("Error seeding sample todos:", seedError);
     }
     res.status(201).send(authUser(addUser));
   } catch (error) {
