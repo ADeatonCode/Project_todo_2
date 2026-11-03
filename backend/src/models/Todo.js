@@ -10,10 +10,15 @@ const todoSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },
+  assignedTo: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  }],
   groupId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Group",
   },
+  deletedAt: { type: Date, default: null },
   tags: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "Tag",

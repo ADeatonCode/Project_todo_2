@@ -31,9 +31,13 @@ http.interceptors.request.use((config) => {
   return config;
 });
 
-const getTodos = async () => {
+const getTodos = async (options = {}) => {
     try { 
-        const response = await http.get(`${API}/api/todos/`);
+        const params = {};
+        if (options && options.trash) {
+            params.trash = 1;
+        }
+        const response = await http.get(`${API}/api/todos/`, { params });
         return response.data;
     } catch (error) {
         console.error("Error fetching todos:", error);
@@ -41,7 +45,7 @@ const getTodos = async () => {
     }
 }
 
-const createTodo = async (title, description = "", tags = [], project = "", groupId = "") => {
+const createTodo = async (title, description = "", tags = [], project = "", groupId = "", assignedTo = []) => {
     try {
         const body = {
             title: title,
@@ -51,6 +55,9 @@ const createTodo = async (title, description = "", tags = [], project = "", grou
         };
         if (groupId) {
             body.groupId = groupId;
+        }
+        if (Array.isArray(assignedTo) && assignedTo.length > 0) {
+            body.assignedTo = assignedTo;
         }
         const response = await http.post(`${API}/api/todos/create`, body);
         return response.data;
@@ -76,6 +83,16 @@ const deleteTodo = async (id) => {
         return response.data;
     } catch (error) {
         console.error("Error deleting todo:", error);
+        throw error;
+    }
+}
+
+const restoreTodo = async (id) => {
+    try {
+        const response = await http.post(`${API}/api/todos/${id}/restore`);
+        return response.data;
+    } catch (error) {
+        console.error("Error restoring todo:", error);
         throw error;
     }
 }
@@ -173,6 +190,16 @@ const deleteGroup = async (groupId) => {
     }
 }
 
+const getAssignableUsers = async () => {
+    try {
+        const response = await http.get(`${API}/api/user/assignable`);
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching assignable users:", error);
+        throw error;
+    }
+}
+
 const getAdminUsers = async () => {
     try {
         const response = await http.get(`${API}/api/user/admin/users`);
@@ -252,6 +279,7 @@ export {
     createTodo,
     updateTodo,
     deleteTodo,
+    restoreTodo,
     getTags,
     createTag,
     signupUser,
@@ -260,6 +288,7 @@ export {
     createGroup,
     addGroupMember,
     deleteGroup,
+    getAssignableUsers,
     getAdminUsers,
     createAdminUser,
     setUserBanned,

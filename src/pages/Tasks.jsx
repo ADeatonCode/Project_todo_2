@@ -10,6 +10,7 @@ import ListItemText from '@mui/material/ListItemText';
 import Checkbox from '@mui/material/Checkbox';
 import IconButton from '@mui/material/IconButton';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import AddIcon from '@mui/icons-material/Add';
@@ -28,7 +29,17 @@ import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import Alert from '@mui/material/Alert';
-import { getTodos, createTodo, updateTodo, deleteTodo, getTags, createTag, getGroups } from '../utils/api';
+import {
+  getTodos,
+  createTodo,
+  updateTodo,
+  deleteTodo,
+  restoreTodo,
+  getTags,
+  createTag,
+  getGroups,
+  getAssignableUsers,
+} from '../utils/api';
 import { isAdminUser, readTodoUser } from '../ProtectedRoute';
 
 const UNGROUPED_KEY = '__ungrouped__';
@@ -55,9 +66,43 @@ function ownerLabel(task) {
   return 'Unknown owner';
 }
 
+function idOf(value) {
+  if (!value) return '';
+  return value._id ? String(value._id) : String(value);
+}
+
 function taskOwnerId(task) {
-  if (!task?.userId) return null;
-  return task.userId._id ? String(task.userId._id) : String(task.userId);
+  return idOf(task?.userId);
+}
+
+function assignedUserIds(task) {
+  return (task?.assignedTo || []).map(idOf).filter(Boolean);
+}
+
+function userOptionLabel(user) {
+  if (!user) return '';
+  if (user.name && user.email) return `${user.name} (${user.email})`;
+  return user.name || user.email || 'Unknown';
+}
+
+function assigneeSummary(task) {
+  const people = (task.assignedTo || []).filter((person) => typeof person === 'object');
+  if (!people.length) return '';
+  return people.map((person) => person.name || person.email).join(', ');
+}
+
+function asUserOption(user) {
+  if (!user?._id) return null;
+  return { _id: user._id, name: user.name, email: user.email };
+}
+
+function mergeUserOptions(base, extras) {
+  const map = new Map();
+  for (const user of [...(base || []), ...(extras || [])]) {
+    if (!user || typeof user !== 'object' || !user._id) continue;
+    map.set(String(user._id), user);
+  }
+  return [...map.values()];
 }
 
 function groupTasksByProject(tasks) {
@@ -81,41 +126,89 @@ function groupTasksByProject(tasks) {
   });
 }
 
+function formatDeletedAt(value) {
+  if (!value) return 'Unknown date';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  return date.toLocaleString();
+}
+
+function taskSecondary(task, admin) {
+  const parts = [];
+  if (admin) parts.push(ownerLabel(task));
+  if (task.groupId?.name) parts.push(admin ? `Group: ${task.groupId.name}` : `Shared with ${task.groupId.name}`);
+  const assigned = assigneeSummary(task);
+  if (assigned) parts.push(`Assigned: ${assigned}`);
+  return parts.join(' · ') || undefined;
+}
+
 export default function Tasks() {
   const currentUser = readTodoUser();
   const admin = isAdminUser(currentUser);
   const [tasks, setTasks] = useState([]);
+  const [trashTasks, setTrashTasks] = useState([]);
+  const [showTrash, setShowTrash] = useState(false);
   const [newTask, setNewTask] = useState('');
   const [newProject, setNewProject] = useState('');
   const [availableTags, setAvailableTags] = useState([]);
   const [selectedTags, setSelectedTags] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [assignableUsers, setAssignableUsers] = useState([]);
+  const [selectedAssignees, setSelectedAssignees] = useState([]);
   const [openTagDialog, setOpenTagDialog] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#2196f3');
-  
-  // Subtask-related state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTaskId, setEditTaskId] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editProject, setEditProject] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editTags, setEditTags] = useState([]);
+  const [editAssignees, setEditAssignees] = useState([]);
+  const [editGroupId, setEditGroupId] = useState('');
+  const [editPriority, setEditPriority] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const [expandedTasks, setExpandedTasks] = useState(new Set());
   const [subtaskForms, setSubtaskForms] = useState({});
   const [newSubtasks, setNewSubtasks] = useState({});
+
+  const meId = String(currentUser?._id || '');
+  const canViewTrash = admin || groups.some((group) => idOf(group.createdBy) === meId);
+  const userOptions = mergeUserOptions(assignableUsers, [asUserOption(currentUser)]);
+
+  const withSubtasks = (list) => (Array.isArray(list) ? list : []).map((task) => ({
+    ...task,
+    subtasks: task.subtasks || [],
+  }));
+
+  const refreshTasks = async () => {
+    const todosData = await getTodos();
+    setTasks(withSubtasks(todosData));
+    if (canViewTrash && showTrash) {
+      const trashData = await getTodos({ trash: true });
+      setTrashTasks(Array.isArray(trashData) ? trashData : []);
+    }
+  };
 
   const addTask = async () => {
     if (!newTask || selectedTags.length === 0) {
       alert('Please enter a task title and select at least one tag');
       return;
     }
-    
+
     try {
-      const tagIds = selectedTags.map(tag => tag._id);
-      const data = await createTodo(newTask, '', tagIds, newProject.trim(), selectedGroupId);
-      // Add subtasks array to the new task
-      const taskWithSubtasks = { ...data, subtasks: [] };
-      setTasks([...tasks, taskWithSubtasks]);
+      const tagIds = selectedTags.map((tag) => tag._id);
+      const assigneeIds = selectedAssignees.map((user) => user._id);
+      const data = await createTodo(newTask, '', tagIds, newProject.trim(), selectedGroupId, assigneeIds);
+      setTasks([...tasks, { ...data, subtasks: [] }]);
       setNewTask('');
       setNewProject('');
       setSelectedTags([]);
       setSelectedGroupId('');
+      const me = userOptions.find((user) => String(user._id) === meId);
+      setSelectedAssignees(me ? [me] : []);
     } catch (error) {
       console.error('Error creating task:', error);
       alert(error.response?.data?.message || 'Error creating task. Please try again.');
@@ -127,7 +220,7 @@ export default function Tasks() {
       alert('Please enter a tag name');
       return;
     }
-    
+
     try {
       const newTag = await createTag(newTagName.trim(), newTagColor);
       setAvailableTags([...availableTags, newTag]);
@@ -138,6 +231,14 @@ export default function Tasks() {
       console.error('Error creating tag:', error);
       alert('Error creating tag. Tag name might already exist.');
     }
+  };
+
+  const canWorkOnTask = (task) => {
+    if (admin) return true;
+    if (taskOwnerId(task) === meId) return true;
+    if (assignedUserIds(task).includes(meId)) return true;
+    const groupId = idOf(task.groupId);
+    return Boolean(groupId && groups.some((group) => String(group._id) === groupId));
   };
 
   const patchTask = async (id, updates) => {
@@ -158,7 +259,7 @@ export default function Tasks() {
     } catch (error) {
       console.error('Error updating task:', error);
       setTasks((prev) => prev.map((t) => ((t._id || t.id) === id ? current : t)));
-      alert('Could not save task. Please try again.');
+      alert(error.response?.data?.message || 'Could not save task. Please try again.');
     }
   };
 
@@ -173,31 +274,67 @@ export default function Tasks() {
     if (!task) return;
     patchTask(id, { priority: !task.priority });
   };
-  
-  const canDeleteTask = (task) => {
-    if (admin) return true;
-    return taskOwnerId(task) === String(currentUser?._id);
+
+  const openEdit = (task) => {
+    setEditTaskId(task._id || task.id);
+    setEditTitle(task.title || '');
+    setEditProject(task.project || '');
+    setEditDescription(task.description || '');
+    setEditTags(Array.isArray(task.tags) ? task.tags : []);
+    setEditAssignees((task.assignedTo || []).filter((person) => typeof person === 'object'));
+    setEditGroupId(task.groupId?._id || task.groupId || '');
+    setEditPriority(!!task.priority);
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editTitle.trim() || editTags.length === 0) {
+      alert('Enter a title and at least one tag');
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await updateTodo(editTaskId, {
+        title: editTitle.trim(),
+        project: editProject.trim(),
+        description: editDescription,
+        tags: editTags.map((tag) => tag._id),
+        assignedTo: editAssignees.map((user) => user._id),
+        groupId: editGroupId || null,
+        priority: editPriority,
+      });
+      setEditOpen(false);
+      await refreshTasks();
+    } catch (error) {
+      console.error('Error editing task:', error);
+      alert(error.response?.data?.message || 'Could not save task. Please try again.');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const remove = async (id) => {
     const task = tasks.find((t) => (t._id || t.id) === id);
-    if (task && !canDeleteTask(task)) {
-      alert('Only the owner or an admin can delete this task.');
+    if (task && !canWorkOnTask(task)) {
+      alert('Only the creator, an assignee, or an admin can delete this task.');
+      return;
+    }
+    if (!window.confirm('Move this task to trash? An admin can restore it within 30 days.')) {
       return;
     }
     try {
       await deleteTodo(id);
       setTasks(tasks.filter((t) => t._id !== id && t.id !== id));
-      setExpandedTasks(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(id);
-        return newSet;
+      setExpandedTasks((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
       });
-      setSubtaskForms(prev => {
+      setSubtaskForms((prev) => {
         const { [id]: removed, ...rest } = prev;
         return rest;
       });
-      setNewSubtasks(prev => {
+      setNewSubtasks((prev) => {
         const { [id]: removed, ...rest } = prev;
         return rest;
       });
@@ -207,23 +344,41 @@ export default function Tasks() {
     }
   };
 
-  // Subtask functions
+  const handleRestore = async (id) => {
+    try {
+      await restoreTodo(id);
+      setTrashTasks((prev) => prev.filter((task) => (task._id || task.id) !== id));
+      await refreshTasks();
+    } catch (error) {
+      console.error('Error restoring task:', error);
+      alert(error.response?.data?.message || 'Could not restore task.');
+    }
+  };
+
+  const handlePermanentDelete = async (id) => {
+    if (!window.confirm('Permanently delete this task? This cannot be undone.')) return;
+    try {
+      await deleteTodo(id);
+      setTrashTasks((prev) => prev.filter((task) => (task._id || task.id) !== id));
+    } catch (error) {
+      console.error('Error permanently deleting task:', error);
+      alert(error.response?.data?.message || 'Could not permanently delete task.');
+    }
+  };
+
   const toggleTaskExpansion = (taskId) => {
-    setExpandedTasks(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(taskId)) {
-        newSet.delete(taskId);
-      } else {
-        newSet.add(taskId);
-      }
-      return newSet;
+    setExpandedTasks((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
     });
   };
 
   const toggleSubtaskForm = (taskId) => {
-    setSubtaskForms(prev => ({
+    setSubtaskForms((prev) => ({
       ...prev,
-      [taskId]: !prev[taskId]
+      [taskId]: !prev[taskId],
     }));
   };
 
@@ -235,38 +390,34 @@ export default function Tasks() {
     }
 
     const newSubtask = {
-      id: Date.now(), // Simple ID generation for frontend-only
+      id: Date.now(),
       title: subtaskTitle.trim(),
-      completed: false
+      completed: false,
     };
 
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
         task._id === taskId || task.id === taskId
-          ? { 
-              ...task, 
-              subtasks: [...(task.subtasks || []), newSubtask] 
-            }
+          ? { ...task, subtasks: [...(task.subtasks || []), newSubtask] }
           : task
       )
     );
 
-    // Clear the subtask input and hide form
-    setNewSubtasks(prev => ({ ...prev, [taskId]: '' }));
-    setSubtaskForms(prev => ({ ...prev, [taskId]: false }));
+    setNewSubtasks((prev) => ({ ...prev, [taskId]: '' }));
+    setSubtaskForms((prev) => ({ ...prev, [taskId]: false }));
   };
 
   const toggleSubtask = (taskId, subtaskId) => {
-    setTasks(prevTasks =>
-      prevTasks.map(task =>
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
         (task._id === taskId || task.id === taskId)
           ? {
               ...task,
-              subtasks: task.subtasks.map(subtask =>
+              subtasks: task.subtasks.map((subtask) =>
                 subtask.id === subtaskId
                   ? { ...subtask, completed: !subtask.completed }
                   : subtask
-              )
+              ),
             }
           : task
       )
@@ -274,12 +425,12 @@ export default function Tasks() {
   };
 
   const removeSubtask = (taskId, subtaskId) => {
-    setTasks(prevTasks =>
-      prevTasks.map(task =>
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
         (task._id === taskId || task.id === taskId)
           ? {
               ...task,
-              subtasks: task.subtasks.filter(subtask => subtask.id !== subtaskId)
+              subtasks: task.subtasks.filter((subtask) => subtask.id !== subtaskId),
             }
           : task
       )
@@ -289,28 +440,61 @@ export default function Tasks() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [todosData, tagsData, groupsData] = await Promise.all([
+        const [todosData, tagsData, groupsData, assignableData] = await Promise.all([
           getTodos(),
           getTags(),
-          getGroups().catch(() => [])
+          getGroups().catch(() => []),
+          getAssignableUsers().catch(() => []),
         ]);
-        const todosList = Array.isArray(todosData) ? todosData : [];
-        const tagsList = Array.isArray(tagsData) ? tagsData : [];
-        const groupsList = Array.isArray(groupsData) ? groupsData : [];
-        const tasksWithSubtasks = todosList.map(task => ({
-          ...task,
-          subtasks: task.subtasks || []
-        }));
-        setTasks(tasksWithSubtasks);
-        setAvailableTags(tagsList);
-        setGroups(groupsList);
+        setTasks(withSubtasks(todosData));
+        setAvailableTags(Array.isArray(tagsData) ? tagsData : []);
+        setGroups(Array.isArray(groupsData) ? groupsData : []);
+        const people = Array.isArray(assignableData) ? assignableData : [];
+        setAssignableUsers(people);
+        const me = people.find((user) => String(user._id) === meId) || asUserOption(currentUser);
+        setSelectedAssignees(me ? [me] : []);
       } catch (error) {
         console.error('Error fetching data:', error);
       }
     };
-    
+
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!showTrash || !canViewTrash) {
+      setTrashTasks([]);
+      return;
+    }
+    getTodos({ trash: true }).then((data) => setTrashTasks(Array.isArray(data) ? data : []));
+  }, [showTrash, canViewTrash]);
+
+  const renderAssigneePicker = (value, onChange) => (
+    <Autocomplete
+      multiple
+      options={mergeUserOptions(userOptions, value)}
+      getOptionLabel={userOptionLabel}
+      isOptionEqualToValue={(option, selected) => String(option._id) === String(selected._id)}
+      value={value}
+      onChange={(event, next) => onChange(next)}
+      renderTags={(selected, getTagProps) =>
+        selected.map((option, index) => (
+          <Chip
+            variant="outlined"
+            label={option.name || option.email}
+            {...getTagProps({ index })}
+          />
+        ))
+      }
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label="Assign to"
+          placeholder={userOptions.length ? 'Choose people' : 'You (no group members yet)'}
+        />
+      )}
+    />
+  );
 
   return (
     <Grid container spacing={2}>
@@ -345,7 +529,8 @@ export default function Tasks() {
                 ))}
               </Select>
             </FormControl>
-            
+            {renderAssigneePicker(selectedAssignees, setSelectedAssignees)}
+
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Autocomplete
                 multiple
@@ -372,8 +557,8 @@ export default function Tasks() {
                 )}
                 sx={{ flexGrow: 1 }}
               />
-              
-              <IconButton 
+
+              <IconButton
                 onClick={() => setOpenTagDialog(true)}
                 color="primary"
                 title="Create new tag"
@@ -381,17 +566,24 @@ export default function Tasks() {
                 <AddIcon />
               </IconButton>
             </Box>
-            
+
             <Button variant="contained" onClick={addTask}>
               Add Task
             </Button>
           </Box>
         </Card>
       </Grid>
-      
+
       <Grid size={{ xs: 12, md: 6 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography variant="h6">Tasks List</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+            <Typography variant="h6">Tasks List</Typography>
+            {canViewTrash && (
+              <Button size="small" variant={showTrash ? 'contained' : 'outlined'} onClick={() => setShowTrash((prev) => !prev)}>
+                {showTrash ? 'Hide trash' : 'Show trash'}
+              </Button>
+            )}
+          </Box>
           {admin && (
             <Alert severity="info">
               Admin view: you can see and edit every user&apos;s tasks. Owner is labeled on each task.
@@ -412,6 +604,7 @@ export default function Tasks() {
                     const isExpanded = expandedTasks.has(taskId);
                     const showSubtaskForm = subtaskForms[taskId];
                     const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+                    const canEdit = canWorkOnTask(task);
 
                     return (
                       <Box key={taskId}>
@@ -429,14 +622,23 @@ export default function Tasks() {
                               {hasSubtasks && (
                                 <IconButton
                                   onClick={() => toggleTaskExpansion(taskId)}
-                                  title={isExpanded ? "Collapse subtasks" : "Expand subtasks"}
+                                  title={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
                                   size="small"
                                 >
                                   {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                                 </IconButton>
                               )}
-                              {canDeleteTask(task) && (
-                                <IconButton edge="end" onClick={() => remove(taskId)}>
+                              {canEdit && (
+                                <IconButton
+                                  onClick={() => openEdit(task)}
+                                  title="Edit task"
+                                  size="small"
+                                >
+                                  <EditIcon />
+                                </IconButton>
+                              )}
+                              {canEdit && (
+                                <IconButton edge="end" onClick={() => remove(taskId)} title="Move to trash">
                                   <DeleteIcon />
                                 </IconButton>
                               )}
@@ -452,16 +654,12 @@ export default function Tasks() {
                               />
                               <ListItemText
                                 primary={task.title}
-                                secondary={
-                                  admin
-                                    ? `${ownerLabel(task)}${task.groupId?.name ? ` · Group: ${task.groupId.name}` : ''}`
-                                    : (task.groupId?.name ? `Shared with ${task.groupId.name}` : undefined)
-                                }
+                                secondary={taskSecondary(task, admin)}
                                 sx={{ textDecoration: task.completed ? 'line-through' : 'none' }}
                               />
                               {hasSubtasks && (
                                 <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                                  ({task.subtasks.filter(st => st.completed).length}/{task.subtasks.length})
+                                  ({task.subtasks.filter((st) => st.completed).length}/{task.subtasks.length})
                                 </Typography>
                               )}
                               <FormControlLabel
@@ -489,7 +687,7 @@ export default function Tasks() {
                                     style={{
                                       backgroundColor: tag.color,
                                       color: 'white',
-                                      fontSize: '0.7rem'
+                                      fontSize: '0.7rem',
                                     }}
                                   />
                                 ))}
@@ -505,9 +703,9 @@ export default function Tasks() {
                                 size="small"
                                 placeholder="Enter subtask..."
                                 value={newSubtasks[taskId] || ''}
-                                onChange={(e) => setNewSubtasks(prev => ({
+                                onChange={(e) => setNewSubtasks((prev) => ({
                                   ...prev,
-                                  [taskId]: e.target.value
+                                  [taskId]: e.target.value,
                                 }))}
                                 onKeyPress={(e) => {
                                   if (e.key === 'Enter') {
@@ -560,8 +758,8 @@ export default function Tasks() {
                                   sx={{
                                     textDecoration: subtask.completed ? 'line-through' : 'none',
                                     '& .MuiListItemText-primary': {
-                                      fontSize: '0.9rem'
-                                    }
+                                      fontSize: '0.9rem',
+                                    },
                                   }}
                                 />
                               </ListItem>
@@ -575,10 +773,134 @@ export default function Tasks() {
               </Card>
             ))
           )}
+
+          {canViewTrash && showTrash && (
+            <Card title="Trash">
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Deleted tasks stay here for 30 days, then are permanently removed.
+              </Typography>
+              {trashTasks.length === 0 ? (
+                <Typography color="text.secondary">Trash is empty.</Typography>
+              ) : (
+                <List>
+                  {trashTasks.map((task) => {
+                    const taskId = task._id || task.id;
+                    return (
+                      <ListItem
+                        key={taskId}
+                        secondaryAction={
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button size="small" onClick={() => handleRestore(taskId)}>
+                              Restore
+                            </Button>
+                            {admin && (
+                              <Button size="small" color="error" onClick={() => handlePermanentDelete(taskId)}>
+                                Delete forever
+                              </Button>
+                            )}
+                          </Box>
+                        }
+                      >
+                        <ListItemText
+                          primary={task.title}
+                          secondary={`${taskSecondary(task, admin) ? `${taskSecondary(task, admin)} · ` : ''}Deleted ${formatDeletedAt(task.deletedAt)}`}
+                          sx={{ opacity: 0.75 }}
+                        />
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              )}
+            </Card>
+          )}
         </Box>
       </Grid>
 
-      {/* Create New Tag Dialog */}
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Edit task</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <TextField
+              fullWidth
+              label="Title"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+            />
+            <TextField
+              fullWidth
+              label="Project"
+              value={editProject}
+              onChange={(e) => setEditProject(e.target.value)}
+            />
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              label="Description"
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+            />
+            <FormControl fullWidth>
+              <InputLabel id="edit-group-label">Share with group</InputLabel>
+              <Select
+                labelId="edit-group-label"
+                label="Share with group"
+                value={editGroupId}
+                onChange={(e) => setEditGroupId(e.target.value)}
+              >
+                <MenuItem value="">Just me</MenuItem>
+                {groups.map((group) => (
+                  <MenuItem key={group._id} value={group._id}>
+                    {group.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {renderAssigneePicker(editAssignees, setEditAssignees)}
+            <Autocomplete
+              multiple
+              options={availableTags}
+              getOptionLabel={(option) => option.name}
+              value={editTags}
+              onChange={(event, newValue) => setEditTags(newValue)}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => (
+                  <Chip
+                    variant="outlined"
+                    label={option.name}
+                    style={{ backgroundColor: option.color, color: 'white' }}
+                    {...getTagProps({ index })}
+                  />
+                ))
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Tags *"
+                  placeholder="Choose tags"
+                />
+              )}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={editPriority}
+                  onChange={(e) => setEditPriority(e.target.checked)}
+                  color="warning"
+                />
+              }
+              label="Priority"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={saveEdit} disabled={savingEdit}>
+            {savingEdit ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={openTagDialog} onClose={() => setOpenTagDialog(false)}>
         <DialogTitle>Create New Tag</DialogTitle>
         <DialogContent>

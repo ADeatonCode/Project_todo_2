@@ -21,6 +21,11 @@ const connectDB = async () => {
     } catch (indexErr) {
       console.error("Could not sync unique head index:", indexErr.message);
     }
+    const { purgeExpiredTrash } = require("./controllers/todoController.js");
+    await purgeExpiredTrash();
+    setInterval(() => {
+      purgeExpiredTrash().catch((err) => console.error("trash purge failed:", err));
+    }, 60 * 60 * 1000);
   } catch (err) {
     console.error("mongodb connection error: ", err);
   }

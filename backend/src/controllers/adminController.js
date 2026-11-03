@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/user");
 const Todo = require("../models/Todo");
 const Group = require("../models/Group");
-const { isHead, isStaff, publicUser, normalizeEmail } = require("../utils/admin");
+const { isHead, isStaff, publicUser, normalizeEmail, sortAdminUsers } = require("../utils/admin");
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -27,8 +27,29 @@ function cannotModerate(req, target) {
 
 const listUsers = async (req, res) => {
   try {
-    const users = await User.find().select("-password -sessionToken").sort({ email: 1 });
-    res.status(200).send(users.map(publicUser));
+    const [users, groups] = await Promise.all([
+      User.find().select("-password -sessionToken"),
+      Group.find().select("name members"),
+    ]);
+
+    const namesByUser = new Map();
+    for (const group of groups) {
+      const name = String(group.name || "").trim();
+      if (!name) continue;
+      for (const member of group.members || []) {
+        const id = String(member);
+        if (!namesByUser.has(id)) namesByUser.set(id, new Set());
+        namesByUser.get(id).add(name);
+      }
+    }
+
+    const payload = users.map((user) => {
+      const names = [...(namesByUser.get(String(user._id)) || [])]
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      return { ...publicUser(user), groups: names };
+    });
+
+    res.status(200).send(sortAdminUsers(payload));
   } catch (error) {
     console.error("Error listing users:", error);
     res.status(500).send({ message: "Internal server error" });

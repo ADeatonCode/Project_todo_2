@@ -30,6 +30,43 @@ function publicUser(user) {
   };
 }
 
+function groupNamesFromUser(user) {
+  const groups = user?.groups || [];
+  return groups
+    .map((group) => (typeof group === "string" ? group : group && group.name ? group.name : ""))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function compareAdminUsers(a, b) {
+  const aHead = isHead(a);
+  const bHead = isHead(b);
+  if (aHead !== bHead) return aHead ? -1 : 1;
+
+  const aKey = groupNamesFromUser(a)[0] || "";
+  const bKey = groupNamesFromUser(b)[0] || "";
+  const aUngrouped = !aKey;
+  const bUngrouped = !bKey;
+  if (aUngrouped !== bUngrouped) return aUngrouped ? 1 : -1;
+
+  const groupCmp = aKey.localeCompare(bKey, undefined, { sensitivity: "base" });
+  if (groupCmp) return groupCmp;
+
+  const aStaff = isStaff(a);
+  const bStaff = isStaff(b);
+  if (aStaff !== bStaff) return aStaff ? -1 : 1;
+
+  const aName = String(a.name || a.email || "").toLowerCase();
+  const bName = String(b.name || b.email || "").toLowerCase();
+  const nameCmp = aName.localeCompare(bName, undefined, { sensitivity: "base" });
+  if (nameCmp) return nameCmp;
+  return String(a.email || "").localeCompare(String(b.email || ""), undefined, { sensitivity: "base" });
+}
+
+function sortAdminUsers(users) {
+  return [...users].sort(compareAdminUsers);
+}
+
 function authUser(user) {
   if (!user) return null;
   return {
@@ -98,6 +135,9 @@ module.exports = {
   isStaff,
   publicUser,
   authUser,
+  groupNamesFromUser,
+  compareAdminUsers,
+  sortAdminUsers,
   demoteExtraHeads,
   repairHeadUniqueness,
   ensureSingleHead,

@@ -138,6 +138,33 @@ const getUser = async (req, res) => {
   }
 };
 
+const listAssignableUsers = async (req, res) => {
+  try {
+    let users;
+    if (isStaff(req.user)) {
+      users = await User.find().select("-password -sessionToken").sort({ name: 1, email: 1 });
+    } else {
+      const Group = require("../models/Group");
+      const groups = await Group.find({
+        $or: [{ members: req.user._id }, { _id: { $in: req.user.groups || [] } }],
+      }).select("members");
+      const ids = new Set([String(req.user._id)]);
+      for (const group of groups) {
+        for (const member of group.members || []) {
+          ids.add(String(member));
+        }
+      }
+      users = await User.find({ _id: { $in: [...ids] } })
+        .select("-password -sessionToken")
+        .sort({ name: 1, email: 1 });
+    }
+    res.status(200).send(users.map(publicUser));
+  } catch (error) {
+    console.error("Error listing assignable users:", error);
+    res.status(500).send({ message: "Internal server error" });
+  }
+};
+
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -162,6 +189,7 @@ module.exports = {
   createUser,
   loginUser,
   getUser,
+  listAssignableUsers,
   deleteUser,
   updateUser,
 };

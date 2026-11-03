@@ -49,6 +49,48 @@ function roleBadge(user) {
   return { label: 'User', color: 'default' };
 }
 
+function userGroupNames(user) {
+  return (user?.groups || [])
+    .map((group) => (typeof group === 'string' ? group : group?.name || ''))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+function userSortName(user) {
+  return String(user?.name || user?.email || '').toLowerCase();
+}
+
+function compareAdminUsers(a, b) {
+  const aHead = isHeadAccount(a);
+  const bHead = isHeadAccount(b);
+  if (aHead !== bHead) return aHead ? -1 : 1;
+
+  const aKey = userGroupNames(a)[0] || '';
+  const bKey = userGroupNames(b)[0] || '';
+  const aUngrouped = !aKey;
+  const bUngrouped = !bKey;
+  if (aUngrouped !== bUngrouped) return aUngrouped ? 1 : -1;
+
+  const groupCmp = aKey.localeCompare(bKey, undefined, { sensitivity: 'base' });
+  if (groupCmp) return groupCmp;
+
+  const aStaff = isStaffAccount(a);
+  const bStaff = isStaffAccount(b);
+  if (aStaff !== bStaff) return aStaff ? -1 : 1;
+
+  const nameCmp = userSortName(a).localeCompare(userSortName(b), undefined, { sensitivity: 'base' });
+  if (nameCmp) return nameCmp;
+  return String(a?.email || '').localeCompare(String(b?.email || ''), undefined, { sensitivity: 'base' });
+}
+
+function sortAdminUsers(users) {
+  return [...users].sort(compareAdminUsers);
+}
+
+function keepUserGroups(previous, updated) {
+  return { ...previous, ...updated, groups: updated.groups || previous.groups || [] };
+}
+
 function apiErrorMessage(error, fallback) {
   return error.response?.data?.message || error.message || fallback;
 }
@@ -74,7 +116,7 @@ export default function Admin() {
   const load = async () => {
     try {
       const [usersData, groupsData] = await Promise.all([getAdminUsers(), getGroups()]);
-      setUsers(Array.isArray(usersData) ? usersData : []);
+      setUsers(sortAdminUsers(Array.isArray(usersData) ? usersData : []));
       setGroups(Array.isArray(groupsData) ? groupsData : []);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not load admin data'), 'error');
@@ -101,7 +143,7 @@ export default function Admin() {
     if (!confirmed) return;
     try {
       const updated = await setUserBanned(user._id, nextBanned);
-      setUsers((prev) => prev.map((u) => (u._id === updated._id ? updated : u)));
+      setUsers((prev) => sortAdminUsers(prev.map((u) => (u._id === updated._id ? keepUserGroups(u, updated) : u))));
       flash(updated.banned ? `Banned ${updated.email}` : `Unbanned ${updated.email}`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not update ban'), 'error');
@@ -137,12 +179,14 @@ export default function Admin() {
       const newHead = result.head || result;
       const former = result.formerHead;
       setUsers((prev) =>
-        prev.map((u) => {
-          if (former && u._id === former._id) return { ...u, ...former };
-          if (newHead && u._id === newHead._id) return { ...u, ...newHead };
-          if (u.role === 'head' && u._id !== newHead?._id) return { ...u, role: 'admin' };
-          return u;
-        })
+        sortAdminUsers(
+          prev.map((u) => {
+            if (former && u._id === former._id) return keepUserGroups(u, former);
+            if (newHead && u._id === newHead._id) return keepUserGroups(u, newHead);
+            if (u.role === 'head' && u._id !== newHead?._id) return { ...u, role: 'admin' };
+            return u;
+          })
+        )
       );
       writeTodoUser({ role: 'admin' });
       setCurrentUser(readTodoUser());
@@ -165,7 +209,7 @@ export default function Admin() {
     if (!confirmed) return;
     try {
       const updated = await setUserRole(user._id, role);
-      setUsers((prev) => prev.map((u) => (u._id === updated._id ? updated : u)));
+      setUsers((prev) => sortAdminUsers(prev.map((u) => (u._id === updated._id ? keepUserGroups(u, updated) : u))));
       flash(role === 'admin' ? `${updated.email} is now an admin` : `${updated.email} is now a user`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not update role'), 'error');
@@ -203,7 +247,7 @@ export default function Admin() {
       setNewUser({ name: '', email: '', password: '' });
       setMakeAdmin(false);
       const usersData = await getAdminUsers();
-      setUsers(Array.isArray(usersData) ? usersData : []);
+      setUsers(sortAdminUsers(Array.isArray(usersData) ? usersData : []));
       flash(`Added ${email}`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not add user'), 'error');
@@ -219,6 +263,8 @@ export default function Admin() {
       const group = await createGroup(groupName.trim());
       setGroups((prev) => [...prev, group].sort((a, b) => a.name.localeCompare(b.name)));
       setGroupName('');
+      const usersData = await getAdminUsers();
+      setUsers(sortAdminUsers(Array.isArray(usersData) ? usersData : []));
       flash(`Created group ${group.name}`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not create group'), 'error');
@@ -235,6 +281,8 @@ export default function Admin() {
       const updated = await addGroupMember(groupId, email);
       setGroups((prev) => prev.map((g) => (g._id === updated._id ? updated : g)));
       setMemberEmails((prev) => ({ ...prev, [groupId]: '' }));
+      const usersData = await getAdminUsers();
+      setUsers(sortAdminUsers(Array.isArray(usersData) ? usersData : []));
       flash(`Added ${email}`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not add member'), 'error');
@@ -246,6 +294,8 @@ export default function Admin() {
     try {
       await deleteGroup(group._id);
       setGroups((prev) => prev.filter((g) => g._id !== group._id));
+      const usersData = await getAdminUsers();
+      setUsers(sortAdminUsers(Array.isArray(usersData) ? usersData : []));
       flash(`Deleted group ${group.name}`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not delete group'), 'error');
@@ -268,6 +318,7 @@ export default function Admin() {
                   <TableCell>Name</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Role</TableCell>
+                  <TableCell>Group</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
@@ -287,7 +338,19 @@ export default function Admin() {
                         <Chip size="small" label={badge.label} color={badge.color} />
                       </TableCell>
                       <TableCell>
-                        {user.banned && !targetIsHead ? (
+                        {userGroupNames(user).join(', ') || '—'}
+                      </TableCell>
+                      <TableCell sx={targetIsHead ? { opacity: 0.45 } : undefined}>
+                        {targetIsHead ? (
+                          <Typography
+                            component="span"
+                            variant="body2"
+                            color="text.disabled"
+                            sx={{ textDecoration: 'line-through', fontStyle: 'italic' }}
+                          >
+                            —
+                          </Typography>
+                        ) : user.banned ? (
                           <Chip size="small" label="Banned" color="error" />
                         ) : (
                           <Chip size="small" label="Active" color="success" />
