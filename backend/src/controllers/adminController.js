@@ -3,11 +3,17 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/user");
 const Todo = require("../models/Todo");
 const Group = require("../models/Group");
-const { isHead, isStaff, publicUser, normalizeEmail, sortAdminUsers } = require("../utils/admin");
-
-function escapeRegex(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+const {
+  isHead,
+  isStaff,
+  publicUser,
+  normalizeEmail,
+  normalizeUsername,
+  identifierToUsername,
+  isValidUsername,
+  findUserByUsername,
+  sortAdminUsers,
+} = require("../utils/admin");
 
 function cannotModerate(req, target) {
   if (!target) {
@@ -59,15 +65,20 @@ const listUsers = async (req, res) => {
 const createAdminUser = async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
-    const email = normalizeEmail(req.body?.email);
+    const username = identifierToUsername(req.body?.username || req.body?.email);
+    const emailRaw = normalizeEmail(req.body?.email);
+    const email = emailRaw.includes("@") ? emailRaw : undefined;
     const password = req.body?.password;
     const requestedRole = String(req.body?.role || "user").toLowerCase().trim();
 
     if (!name) {
       return res.status(400).send({ message: "Name required" });
     }
-    if (!email) {
-      return res.status(400).send({ message: "Email required" });
+    if (!username) {
+      return res.status(400).send({ message: "Username required" });
+    }
+    if (!isValidUsername(username)) {
+      return res.status(400).send({ message: "Username can use letters, numbers, periods, underscores, and hyphens" });
     }
     if (!password || typeof password !== "string") {
       return res.status(400).send({ message: "Password required" });
@@ -85,17 +96,16 @@ const createAdminUser = async (req, res) => {
 
     const role = requestedRole === "admin" && isHead(req.user) ? "admin" : "user";
 
-    const existing = await User.findOne({
-      email: { $regex: new RegExp(`^${escapeRegex(email)}$`, "i") },
-    });
+    const existing = await findUserByUsername(User, username);
     if (existing) {
-      return res.status(400).send({ message: "Email already in use" });
+      return res.status(400).send({ message: "Username already in use" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
     const created = await User.create({
       name,
-      email,
+      username: normalizeUsername(username),
+      ...(email ? { email } : {}),
       password: hashed,
       role,
       banned: false,
@@ -105,7 +115,7 @@ const createAdminUser = async (req, res) => {
   } catch (error) {
     console.error("Error creating user:", error);
     if (error.code === 11000) {
-      return res.status(400).send({ message: "Email already in use" });
+      return res.status(400).send({ message: "Username already in use" });
     }
     res.status(500).send({ message: "Internal server error" });
   }

@@ -1,11 +1,11 @@
 const Group = require("../models/Group");
 const User = require("../models/user");
 const Todo = require("../models/Todo");
-const { isStaff } = require("../utils/admin");
+const { isStaff, findUserByLogin } = require("../utils/admin");
 
 const GROUP_POPULATE = [
-  { path: "members", select: "name email" },
-  { path: "createdBy", select: "name email" },
+  { path: "members", select: "name username email" },
+  { path: "createdBy", select: "name username email" },
 ];
 
 function isGroupAdminOrCreator(user, group) {
@@ -51,9 +51,9 @@ const createGroup = async (req, res) => {
 const addGroupMember = async (req, res) => {
   try {
     const { id } = req.params;
-    const email = String(req.body.email || "").trim();
-    if (!email) {
-      return res.status(400).send({ message: "Email is required" });
+    const identifier = String(req.body.username || req.body.email || "").trim();
+    if (!identifier) {
+      return res.status(400).send({ message: "Username is required" });
     }
 
     const group = await Group.findById(id);
@@ -64,7 +64,7 @@ const addGroupMember = async (req, res) => {
       return res.status(403).send({ message: "Not allowed to add members" });
     }
 
-    const member = await User.findOne({ email });
+    const member = await findUserByLogin(User, identifier);
     if (!member) {
       return res.status(404).send({ message: "User not found" });
     }

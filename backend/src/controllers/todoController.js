@@ -7,8 +7,8 @@ const { isStaff } = require("../utils/admin");
 
 const TODO_POPULATE = [
   { path: "tags" },
-  { path: "userId", select: "name email" },
-  { path: "assignedTo", select: "name email" },
+  { path: "userId", select: "name username email" },
+  { path: "assignedTo", select: "name username email" },
   { path: "groupId", select: "name createdBy" },
 ];
 

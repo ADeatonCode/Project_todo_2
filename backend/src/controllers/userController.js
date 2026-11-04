@@ -9,6 +9,12 @@ const {
   publicUser,
   authUser,
   normalizeEmail,
+  normalizeUsername,
+  identifierToUsername,
+  isValidUsername,
+  findUserByLogin,
+  findUserByUsername,
+  ensureUsername,
   ensureSingleHead,
 } = require("../utils/admin.js");
 
@@ -20,16 +26,8 @@ function newSessionToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
-function escapeRegex(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-async function findUserByEmail(email) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) return null;
-  return User.findOne({
-    email: { $regex: new RegExp(`^${escapeRegex(normalized)}$`, "i") },
-  });
+function loginIdentifier(body) {
+  return body?.username || body?.email || "";
 }
 
 async function seedSampleTodos(userId) {
@@ -86,23 +84,39 @@ async function verifyAndMigratePassword(user, password) {
 }
 
 const createUser = async (req, res) => {
-  const name = req.body.name;
-  const email = normalizeEmail(req.body.email);
+  const name = String(req.body.name || "").trim();
+  const username = identifierToUsername(req.body.username || req.body.email);
+  const emailRaw = normalizeEmail(req.body.email);
+  const email = emailRaw.includes("@") ? emailRaw : undefined;
   const { password } = req.body;
 
   try {
+    if (!name) {
+      return res.status(400).send({ message: "Name required" });
+    }
+    if (!username) {
+      return res.status(400).send({ message: "Username required" });
+    }
+    if (!isValidUsername(username)) {
+      return res.status(400).send({ message: "Username can use letters, numbers, periods, underscores, and hyphens" });
+    }
     if (!password || typeof password !== "string") {
       return res.status(400).send({ message: "Password required" });
     }
+    const existing = await findUserByUsername(User, username);
+    if (existing) {
+      return res.status(400).send({ message: "Username already in use" });
+    }
     const existingHead = await User.exists({ role: "head" });
     let role = "user";
-    if (isAdminEmail(email)) {
+    if (isAdminEmail(username) || isAdminEmail(email)) {
       role = existingHead ? "admin" : "head";
     }
     const hashed = await bcrypt.hash(password, 10);
     const addUser = await User.create({
       name,
-      email,
+      username: normalizeUsername(username),
+      ...(email ? { email } : {}),
       password: hashed,
       sessionToken: newSessionToken(),
       role,
@@ -123,24 +137,25 @@ const createUser = async (req, res) => {
   } catch (error) {
     console.error("Error creating user:", error);
     if (error.code === 11000) {
-      return res.status(400).send({ message: "Email already in use" });
+      return res.status(400).send({ message: "Username already in use" });
     }
     return res.status(500).send({ message: "Internal server error" });
   }
 };
 
 const loginUser = async (req, res) => {
-  const email = normalizeEmail(req.body.email);
+  const identifier = loginIdentifier(req.body);
   const { password } = req.body;
 
   try {
-    const user = await findUserByEmail(email);
+    const user = await findUserByLogin(User, identifier);
     if (!user || !(await verifyAndMigratePassword(user, password))) {
-      return res.status(401).send({ message: "Invalid email or password" });
+      return res.status(401).send({ message: "Invalid username or password" });
     }
     if (user.banned) {
       return res.status(403).send({ message: "This account is banned" });
     }
+    await ensureUsername(User, user);
     await ensureSingleHead(User, user);
     user.sessionToken = newSessionToken();
     await user.save();
@@ -189,7 +204,7 @@ const listAssignableUsers = async (req, res) => {
   try {
     let users;
     if (isStaff(req.user)) {
-      users = await User.find().select("-password -sessionToken").sort({ name: 1, email: 1 });
+      users = await User.find().select("-password -sessionToken").sort({ name: 1, username: 1, email: 1 });
     } else {
       const Group = require("../models/Group");
       const groups = await Group.find({
@@ -203,7 +218,7 @@ const listAssignableUsers = async (req, res) => {
       }
       users = await User.find({ _id: { $in: [...ids] } })
         .select("-password -sessionToken")
-        .sort({ name: 1, email: 1 });
+        .sort({ name: 1, username: 1, email: 1 });
     }
     res.status(200).send(users.map(publicUser));
   } catch (error) {

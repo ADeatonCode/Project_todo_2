@@ -21,6 +21,7 @@ function persistTodoUser(user) {
   localStorage.setItem('todoUser', JSON.stringify({
     _id: user._id,
     name: user.name,
+    username: user.username,
     email: user.email,
     role: user.role || 'user',
     token: user.token
@@ -36,7 +37,7 @@ export default function Auth() {
   const [tabValue, setTabValue] = useState(0);
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
+    username: '',
     password: '',
     confirmPassword: ''
   });
@@ -49,7 +50,7 @@ export default function Auth() {
     setMessage('');
     setFormData({
       name: '',
-      email: '',
+      username: '',
       password: '',
       confirmPassword: ''
     });
@@ -75,7 +76,7 @@ export default function Auth() {
     setMessage('');
 
     try {
-      const result = await signupUser(formData.name, formData.email, formData.password);
+      const result = await signupUser(formData.name, formData.username, formData.password);
       persistTodoUser(result);
       setMessage('Account created successfully!');
       setMessageType('success');
@@ -94,13 +95,13 @@ export default function Auth() {
     setMessage('');
 
     try {
-      const result = await loginUser(formData.email, formData.password);
+      const result = await loginUser(formData.username, formData.password);
       persistTodoUser(result);
       setMessage('Login successful!');
       setMessageType('success');
       navigate('/tasks');
     } catch (error) {
-      setMessage(apiErrorMessage(error, 'Invalid email or password'));
+      setMessage(apiErrorMessage(error, 'Invalid username or password'));
       setMessageType('error');
     } finally {
       setLoading(false);
@@ -145,11 +146,11 @@ export default function Auth() {
           <Box component="form" onSubmit={handleLogin}>
             <TextField
               fullWidth
-              label="Email"
-              name="email"
-              type="email"
+              label="Username"
+              name="username"
+              type="text"
               autoComplete="username"
-              value={formData.email}
+              value={formData.username}
               onChange={handleInputChange}
               margin="normal"
               required
@@ -195,11 +196,11 @@ export default function Auth() {
             />
             <TextField
               fullWidth
-              label="Email"
-              name="email"
-              type="email"
+              label="Username"
+              name="username"
+              type="text"
               autoComplete="username"
-              value={formData.email}
+              value={formData.username}
               onChange={handleInputChange}
               margin="normal"
               required

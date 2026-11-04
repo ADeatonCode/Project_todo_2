@@ -1,5 +1,5 @@
 const User = require("../models/user");
-const { isStaff, isHead, isAdminEmail, ensureSingleHead } = require("../utils/admin");
+const { isStaff, isHead, isAdminUser, ensureSingleHead } = require("../utils/admin");
 
 function readBearerToken(req) {
   const header = req.header("Authorization") || "";
@@ -27,7 +27,7 @@ const requireAuth = async (req, res, next) => {
       return res.status(403).send({ message: "This account is banned" });
     }
     const headCount = await User.countDocuments({ role: "head" });
-    if (headCount === 0 && isAdminEmail(user.email)) {
+    if (headCount === 0 && isAdminUser(user)) {
       await ensureSingleHead(User, user);
     } else if (headCount > 1) {
       await ensureSingleHead(User, user);

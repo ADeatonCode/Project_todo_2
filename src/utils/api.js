@@ -140,11 +140,11 @@ const createTag = async (name, color = "#2196f3", description = "") => {
 }
 
 // User API functions
-const signupUser = async (name, email, password) => {
+const signupUser = async (name, username, password) => {
     try {
         const response = await http.post(`${API}/api/user/create`, {
             name: name,
-            email: email,
+            username: username,
             password: password
         });
         return response.data;
@@ -154,10 +154,10 @@ const signupUser = async (name, email, password) => {
     }
 }
 
-const loginUser = async (email, password) => {
+const loginUser = async (username, password) => {
     try {
         const response = await http.post(`${API}/api/user/login`, {
-            email: email,
+            username: username,
             password: password
         });
         return response.data;
@@ -187,9 +187,9 @@ const createGroup = async (name) => {
     }
 }
 
-const addGroupMember = async (groupId, email) => {
+const addGroupMember = async (groupId, username) => {
     try {
-        const response = await http.post(`${API}/api/groups/${groupId}/members`, { email });
+        const response = await http.post(`${API}/api/groups/${groupId}/members`, { username });
         return response.data;
     } catch (error) {
         console.error("Error adding group member:", error);
@@ -227,9 +227,9 @@ const getAdminUsers = async () => {
     }
 }
 
-const createAdminUser = async (name, email, password, role) => {
+const createAdminUser = async (name, username, password, role) => {
     try {
-        const body = { name, email, password };
+        const body = { name, username, password };
         if (role) {
             body.role = role;
         }

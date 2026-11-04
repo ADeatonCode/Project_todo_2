@@ -14,8 +14,24 @@ const connectDB = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     console.log("mongodb connected");
     const User = require("./models/user.js");
-    const { repairHeadUniqueness } = require("./utils/admin.js");
+    const { repairHeadUniqueness, backfillUsernames } = require("./utils/admin.js");
     await repairHeadUniqueness(User);
+    try {
+      await backfillUsernames(User);
+    } catch (backfillErr) {
+      console.error("Could not backfill usernames:", backfillErr.message);
+    }
+    try {
+      const indexes = await User.collection.indexes();
+      const emailIdx = indexes.find((idx) => idx.name === "email_1" && idx.unique && !idx.sparse);
+      if (emailIdx) {
+        await User.collection.dropIndex("email_1");
+      }
+    } catch (indexErr) {
+      if (indexErr.code !== 27 && indexErr.codeName !== "IndexNotFound") {
+        console.error("Could not refresh email index:", indexErr.message);
+      }
+    }
     try {
       await User.syncIndexes();
     } catch (indexErr) {

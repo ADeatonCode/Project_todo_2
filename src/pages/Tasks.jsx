@@ -55,13 +55,16 @@ function projectDisplayName(project) {
   return name || UNGROUPED_TITLE;
 }
 
+function userHandle(user) {
+  return user?.username || user?.email || user?.name || 'Unknown';
+}
+
 function ownerLabel(task) {
   const owner = task.userId;
   if (!owner) return 'Unscoped (no owner)';
   if (typeof owner === 'object') {
     const name = owner.name || 'Unknown';
-    const email = owner.email || 'no email';
-    return `${name} (${email})`;
+    return `${name} (${userHandle(owner)})`;
   }
   return 'Unknown owner';
 }
@@ -81,19 +84,20 @@ function assignedUserIds(task) {
 
 function userOptionLabel(user) {
   if (!user) return '';
-  if (user.name && user.email) return `${user.name} (${user.email})`;
-  return user.name || user.email || 'Unknown';
+  const handle = user.username || user.email;
+  if (user.name && handle) return `${user.name} (${handle})`;
+  return user.name || handle || 'Unknown';
 }
 
 function assigneeSummary(task) {
   const people = (task.assignedTo || []).filter((person) => typeof person === 'object');
   if (!people.length) return '';
-  return people.map((person) => person.name || person.email).join(', ');
+  return people.map((person) => person.name || userHandle(person)).join(', ');
 }
 
 function asUserOption(user) {
   if (!user?._id) return null;
-  return { _id: user._id, name: user.name, email: user.email };
+  return { _id: user._id, name: user.name, username: user.username, email: user.email };
 }
 
 function mergeUserOptions(base, extras) {
@@ -629,7 +633,7 @@ export default function Tasks() {
         selected.map((option, index) => (
           <Chip
             variant="outlined"
-            label={option.name || option.email}
+            label={option.name || userHandle(option)}
             {...getTagProps({ index })}
           />
         ))

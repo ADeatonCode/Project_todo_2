@@ -56,8 +56,12 @@ function userGroupNames(user) {
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
+function userHandle(user) {
+  return user?.username || user?.email || user?.name || 'Unknown';
+}
+
 function userSortName(user) {
-  return String(user?.name || user?.email || '').toLowerCase();
+  return String(user?.name || userHandle(user) || '').toLowerCase();
 }
 
 function compareAdminUsers(a, b) {
@@ -80,7 +84,7 @@ function compareAdminUsers(a, b) {
 
   const nameCmp = userSortName(a).localeCompare(userSortName(b), undefined, { sensitivity: 'base' });
   if (nameCmp) return nameCmp;
-  return String(a?.email || '').localeCompare(String(b?.email || ''), undefined, { sensitivity: 'base' });
+  return String(userHandle(a)).localeCompare(String(userHandle(b)), undefined, { sensitivity: 'base' });
 }
 
 function sortAdminUsers(users) {
@@ -100,10 +104,10 @@ export default function Admin() {
   const viewerIsHead = isHeadUser(currentUser);
   const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
-  const [newUser, setNewUser] = useState({ name: '', email: '', password: '' });
+  const [newUser, setNewUser] = useState({ name: '', username: '', password: '' });
   const [makeAdmin, setMakeAdmin] = useState(false);
   const [groupName, setGroupName] = useState('');
-  const [memberEmails, setMemberEmails] = useState({});
+  const [memberUsernames, setMemberUsernames] = useState({});
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
   const [loading, setLoading] = useState(true);
@@ -137,14 +141,14 @@ export default function Admin() {
     const nextBanned = !user.banned;
     const confirmed = window.confirm(
       nextBanned
-        ? `Ban ${user.email}? They will not be able to log in.`
-        : `Unban ${user.email}?`
+        ? `Ban ${userHandle(user)}? They will not be able to log in.`
+        : `Unban ${userHandle(user)}?`
     );
     if (!confirmed) return;
     try {
       const updated = await setUserBanned(user._id, nextBanned);
       setUsers((prev) => sortAdminUsers(prev.map((u) => (u._id === updated._id ? keepUserGroups(u, updated) : u))));
-      flash(updated.banned ? `Banned ${updated.email}` : `Unbanned ${updated.email}`);
+      flash(updated.banned ? `Banned ${userHandle(updated)}` : `Unbanned ${userHandle(updated)}`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not update ban'), 'error');
     }
@@ -155,10 +159,10 @@ export default function Admin() {
       flash('You cannot reset this account', 'error');
       return;
     }
-    if (!window.confirm(`Delete all tasks owned by ${user.email}?`)) return;
+    if (!window.confirm(`Delete all tasks owned by ${userHandle(user)}?`)) return;
     try {
       const result = await resetUserTasks(user._id);
-      flash(`Reset tasks for ${user.email} (${result.deletedCount || 0} deleted)`);
+      flash(`Reset tasks for ${userHandle(user)} (${result.deletedCount || 0} deleted)`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not reset tasks'), 'error');
     }
@@ -190,7 +194,7 @@ export default function Admin() {
       );
       writeTodoUser({ role: 'admin' });
       setCurrentUser(readTodoUser());
-      flash(`${newHead.email} is now the head admin. You remain an admin.`);
+      flash(`${userHandle(newHead)} is now the head admin. You remain an admin.`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not transfer head'), 'error');
     }
@@ -203,14 +207,14 @@ export default function Admin() {
     }
     const confirmed = window.confirm(
       role === 'admin'
-        ? `Make ${user.email} an admin?`
-        : `Remove admin from ${user.email}?`
+        ? `Make ${userHandle(user)} an admin?`
+        : `Remove admin from ${userHandle(user)}?`
     );
     if (!confirmed) return;
     try {
       const updated = await setUserRole(user._id, role);
       setUsers((prev) => sortAdminUsers(prev.map((u) => (u._id === updated._id ? keepUserGroups(u, updated) : u))));
-      flash(role === 'admin' ? `${updated.email} is now an admin` : `${updated.email} is now a user`);
+      flash(role === 'admin' ? `${userHandle(updated)} is now an admin` : `${userHandle(updated)} is now a user`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not update role'), 'error');
     }
@@ -221,11 +225,11 @@ export default function Admin() {
       flash('You cannot remove this account', 'error');
       return;
     }
-    if (!window.confirm(`Remove ${user.email} and delete their tasks?`)) return;
+    if (!window.confirm(`Remove ${userHandle(user)} and delete their tasks?`)) return;
     try {
       await removeAdminUser(user._id);
       setUsers((prev) => prev.filter((u) => u._id !== user._id));
-      flash(`Removed ${user.email}`);
+      flash(`Removed ${userHandle(user)}`);
       const groupsData = await getGroups();
       setGroups(Array.isArray(groupsData) ? groupsData : []);
     } catch (error) {
@@ -235,20 +239,20 @@ export default function Admin() {
 
   const handleCreateUser = async () => {
     const name = newUser.name.trim();
-    const email = newUser.email.trim();
+    const username = newUser.username.trim();
     const password = newUser.password;
-    if (!name || !email || !password) {
-      flash('Enter a name, email, and password', 'error');
+    if (!name || !username || !password) {
+      flash('Enter a name, username, and password', 'error');
       return;
     }
     const role = viewerIsHead && makeAdmin ? 'admin' : 'user';
     try {
-      await createAdminUser(name, email, password, role);
-      setNewUser({ name: '', email: '', password: '' });
+      await createAdminUser(name, username, password, role);
+      setNewUser({ name: '', username: '', password: '' });
       setMakeAdmin(false);
       const usersData = await getAdminUsers();
       setUsers(sortAdminUsers(Array.isArray(usersData) ? usersData : []));
-      flash(`Added ${email}`);
+      flash(`Added ${username}`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not add user'), 'error');
     }
@@ -272,18 +276,18 @@ export default function Admin() {
   };
 
   const handleAddMember = async (groupId) => {
-    const email = (memberEmails[groupId] || '').trim();
-    if (!email) {
-      flash('Enter a member email', 'error');
+    const username = (memberUsernames[groupId] || '').trim();
+    if (!username) {
+      flash('Enter a member username', 'error');
       return;
     }
     try {
-      const updated = await addGroupMember(groupId, email);
+      const updated = await addGroupMember(groupId, username);
       setGroups((prev) => prev.map((g) => (g._id === updated._id ? updated : g)));
-      setMemberEmails((prev) => ({ ...prev, [groupId]: '' }));
+      setMemberUsernames((prev) => ({ ...prev, [groupId]: '' }));
       const usersData = await getAdminUsers();
       setUsers(sortAdminUsers(Array.isArray(usersData) ? usersData : []));
-      flash(`Added ${email}`);
+      flash(`Added ${username}`);
     } catch (error) {
       flash(apiErrorMessage(error, 'Could not add member'), 'error');
     }
@@ -316,7 +320,7 @@ export default function Admin() {
               <TableHead>
                 <TableRow>
                   <TableCell>Name</TableCell>
-                  <TableCell>Email</TableCell>
+                  <TableCell>Username</TableCell>
                   <TableCell>Role</TableCell>
                   <TableCell>Group</TableCell>
                   <TableCell>Status</TableCell>
@@ -333,7 +337,7 @@ export default function Admin() {
                   return (
                     <TableRow key={user._id}>
                       <TableCell>{user.name}</TableCell>
-                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{userHandle(user)}</TableCell>
                       <TableCell>
                         <Chip size="small" label={badge.label} color={badge.color} />
                       </TableCell>
@@ -405,9 +409,9 @@ export default function Admin() {
           />
           <TextField
             size="small"
-            label="Email"
-            value={newUser.email}
-            onChange={(e) => setNewUser((prev) => ({ ...prev, email: e.target.value }))}
+            label="Username"
+            value={newUser.username}
+            onChange={(e) => setNewUser((prev) => ({ ...prev, username: e.target.value }))}
           />
           <TextField
             size="small"
@@ -459,16 +463,16 @@ export default function Admin() {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 Members:{' '}
                 {(group.members || [])
-                  .map((m) => (typeof m === 'object' ? `${m.name} (${m.email})` : m))
+                  .map((m) => (typeof m === 'object' ? `${m.name} (${userHandle(m)})` : m))
                   .join(', ') || 'none'}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 <TextField
                   size="small"
-                  label="Add member by email"
-                  value={memberEmails[group._id] || ''}
+                  label="Add member by username"
+                  value={memberUsernames[group._id] || ''}
                   onChange={(e) =>
-                    setMemberEmails((prev) => ({ ...prev, [group._id]: e.target.value }))
+                    setMemberUsernames((prev) => ({ ...prev, [group._id]: e.target.value }))
                   }
                 />
                 <Button variant="outlined" onClick={() => handleAddMember(group._id)}>

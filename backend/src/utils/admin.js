@@ -2,11 +2,109 @@ function normalizeEmail(email) {
   return String(email || "").toLowerCase().trim();
 }
 
-function isAdminEmail(email) {
+function normalizeUsername(value) {
+  return String(value || "").toLowerCase().trim();
+}
+
+function usernameFromEmail(email) {
   const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes("@")) return "";
+  return normalizeUsername(normalized.split("@")[0]);
+}
+
+function identifierToUsername(value) {
+  const normalized = normalizeUsername(value);
+  if (!normalized) return "";
+  if (normalized.includes("@")) return usernameFromEmail(normalized);
+  return normalized;
+}
+
+function isValidUsername(username) {
+  return /^[a-z0-9][a-z0-9._-]{0,39}$/i.test(username);
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isAdminEmail(value) {
+  const normalized = normalizeEmail(value);
   if (!normalized) return false;
   const envAdmin = normalizeEmail(process.env.ADMIN_EMAIL);
-  return normalized === "acdelgato@gmail.com" || (envAdmin && normalized === envAdmin);
+  if (normalized === "acdelgato@gmail.com" || (envAdmin && normalized === envAdmin)) {
+    return true;
+  }
+  const asUsername = normalized.includes("@")
+    ? usernameFromEmail(normalized)
+    : normalizeUsername(normalized);
+  if (asUsername === "acdelgato") return true;
+  if (envAdmin && asUsername === usernameFromEmail(envAdmin)) return true;
+  return false;
+}
+
+function isAdminUser(user) {
+  if (!user) return false;
+  return isAdminEmail(user.email) || isAdminEmail(user.username);
+}
+
+async function findUserByLogin(User, identifier) {
+  const raw = String(identifier || "").trim();
+  const normalized = normalizeEmail(raw);
+  if (!normalized) return null;
+
+  const escaped = escapeRegex(normalized);
+  const local = normalized.includes("@") ? usernameFromEmail(normalized) : normalized;
+  const or = [
+    { username: { $regex: new RegExp(`^${escaped}$`, "i") } },
+    { email: { $regex: new RegExp(`^${escaped}$`, "i") } },
+  ];
+  if (local && local !== normalized) {
+    or.push({ username: { $regex: new RegExp(`^${escapeRegex(local)}$`, "i") } });
+  }
+  if (!normalized.includes("@") && local) {
+    or.push({ email: { $regex: new RegExp(`^${escapeRegex(local)}@`, "i") } });
+  }
+  return User.findOne({ $or: or });
+}
+
+async function findUserByUsername(User, username) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return null;
+  return User.findOne({
+    username: { $regex: new RegExp(`^${escapeRegex(normalized)}$`, "i") },
+  });
+}
+
+async function ensureUsername(User, user) {
+  if (!user || user.username) return user;
+  const derived = usernameFromEmail(user.email);
+  if (!derived) return user;
+  const clash = await findUserByUsername(User, derived);
+  if (!clash || String(clash._id) === String(user._id)) {
+    user.username = derived;
+  }
+  return user;
+}
+
+async function backfillUsernames(User) {
+  const users = await User.find({
+    $or: [{ username: { $exists: false } }, { username: null }, { username: "" }],
+  });
+  for (const user of users) {
+    const base = usernameFromEmail(user.email);
+    if (!base) continue;
+    let candidate = base;
+    let n = 1;
+    while (await User.findOne({
+      _id: { $ne: user._id },
+      username: candidate,
+    })) {
+      candidate = `${base}${n}`;
+      n += 1;
+    }
+    user.username = candidate;
+    await user.save();
+  }
 }
 
 function isHead(user) {
@@ -24,6 +122,7 @@ function publicUser(user) {
   return {
     _id: user._id,
     name: user.name,
+    username: user.username,
     email: user.email,
     role: user.role || "user",
     banned: !!user.banned,
@@ -56,11 +155,13 @@ function compareAdminUsers(a, b) {
   const bStaff = isStaff(b);
   if (aStaff !== bStaff) return aStaff ? -1 : 1;
 
-  const aName = String(a.name || a.email || "").toLowerCase();
-  const bName = String(b.name || b.email || "").toLowerCase();
+  const aName = String(a.name || a.username || a.email || "").toLowerCase();
+  const bName = String(b.name || b.username || b.email || "").toLowerCase();
   const nameCmp = aName.localeCompare(bName, undefined, { sensitivity: "base" });
   if (nameCmp) return nameCmp;
-  return String(a.email || "").localeCompare(String(b.email || ""), undefined, { sensitivity: "base" });
+  const aHandle = String(a.username || a.email || "");
+  const bHandle = String(b.username || b.email || "");
+  return aHandle.localeCompare(bHandle, undefined, { sensitivity: "base" });
 }
 
 function sortAdminUsers(users) {
@@ -107,7 +208,7 @@ async function ensureSingleHead(User, user) {
   const heads = await User.find({ role: "head" }).select("_id").sort({ _id: 1 });
 
   if (heads.length === 0) {
-    if (isAdminEmail(user.email)) {
+    if (isAdminUser(user)) {
       user.role = "head";
       changed = true;
     }
@@ -130,7 +231,17 @@ async function ensureSingleHead(User, user) {
 
 module.exports = {
   normalizeEmail,
+  normalizeUsername,
+  usernameFromEmail,
+  identifierToUsername,
+  isValidUsername,
+  escapeRegex,
   isAdminEmail,
+  isAdminUser,
+  findUserByLogin,
+  findUserByUsername,
+  ensureUsername,
+  backfillUsernames,
   isHead,
   isStaff,
   publicUser,
