@@ -1,3 +1,7 @@
+/*
+ * This file is the blueprint for a team of users who share tasks.
+ * members is the list of people in the group. createdBy is who started it.
+ */
 const mongoose = require("mongoose");
 
 const groupSchema = new mongoose.Schema({

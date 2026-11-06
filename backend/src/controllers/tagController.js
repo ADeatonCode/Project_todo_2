@@ -1,5 +1,10 @@
+/*
+ * This file creates, lists, updates, and deletes tags (color labels for tasks).
+ * Tag names must be unique. Error 11000 means that name is already taken.
+ */
 const Tag = require("../models/Tag");
 
+// Make a new color label. Duplicate names are rejected.
 const createTag = async (req, res) => {
   const { name, color, description } = req.body;
 
@@ -16,6 +21,7 @@ const createTag = async (req, res) => {
   }
 };
 
+// Remove one tag by id.
 const deleteTag = async (req, res) => {
   try {
     const { id } = req.params;
@@ -32,6 +38,7 @@ const deleteTag = async (req, res) => {
   }
 };
 
+// Return every tag so the website can show the color chips.
 const getTags = async (req, res) => {
   try {
     const tags = await Tag.find();
@@ -42,6 +49,7 @@ const getTags = async (req, res) => {
   }
 }
 
+// Change a tag's name, color, or description.
 const updateTag = async (req, res) => {
   try {
     const { id } = req.params
@@ -62,6 +70,7 @@ const updateTag = async (req, res) => {
   }
 }
 
+// Find one tag by its id.
 const getTagById = async (req, res) => {
   try {
     const { id } = req.params;

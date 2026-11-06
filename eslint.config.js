@@ -1,3 +1,6 @@
+/*
+ * ESLint rules for Project TODO — warns about messy or unsafe JavaScript.
+ */
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'

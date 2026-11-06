@@ -1,3 +1,8 @@
+/*
+ * Tasks page — the main to-do list.
+ * You can add, edit, check off, tag, assign, and trash tasks here.
+ * Nested sub-tasks and groups are handled in this same screen.
+ */
 import React, { useState, useEffect } from 'react';
 import Grid from '@mui/material/Grid';
 import Card from '../components/Card';
@@ -190,6 +195,7 @@ function taskSecondary(task, admin) {
   return parts.join(' · ') || undefined;
 }
 
+/** Full task list editor: add, check off, tag, assign, trash. */
 export default function Tasks() {
   const currentUser = readTodoUser();
   const admin = isAdminUser(currentUser);

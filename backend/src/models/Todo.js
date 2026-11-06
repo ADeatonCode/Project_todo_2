@@ -1,3 +1,8 @@
+/*
+ * This file is the blueprint for one task (a "todo").
+ * A task can belong to a person, a group, and have tags, due dates, and repeats.
+ * deletedAt is not a hard delete: it means the task is in the trash.
+ */
 const mongoose = require("mongoose");
 
 const todoSchema = new mongoose.Schema({

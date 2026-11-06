@@ -1,3 +1,8 @@
+/*
+ * Admin page for staff only.
+ * Here a head admin can manage users, bans, roles, and groups.
+ * Regular signed-in people never see this screen (AdminRoute blocks them).
+ */
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -31,14 +36,17 @@ import {
   setUserRole,
 } from '../utils/api';
 
+/** True when this user is the single top "head" admin. */
 function isHeadAccount(user) {
   return isHeadUser(user);
 }
 
+/** True when this user is staff (admin or head). */
 function isStaffAccount(user) {
   return user?.role === 'admin' || isHeadAccount(user);
 }
 
+/** Chip label + color for a user's role. */
 function roleBadge(user) {
   if (isHeadAccount(user)) {
     return { label: 'Head admin', color: 'secondary' };
@@ -49,6 +57,7 @@ function roleBadge(user) {
   return { label: 'User', color: 'default' };
 }
 
+/** Sorted list of group names this user belongs to. */
 function userGroupNames(user) {
   return (user?.groups || [])
     .map((group) => (typeof group === 'string' ? group : group?.name || ''))
@@ -56,14 +65,17 @@ function userGroupNames(user) {
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
+/** Best short name to show for a user in the table. */
 function userHandle(user) {
   return user?.username || user?.email || user?.name || 'Unknown';
 }
 
+/** Lowercase name used when sorting the user list. */
 function userSortName(user) {
   return String(user?.name || userHandle(user) || '').toLowerCase();
 }
 
+/** Sort order: head first, then by group, then staff, then name. */
 function compareAdminUsers(a, b) {
   const aHead = isHeadAccount(a);
   const bHead = isHeadAccount(b);
@@ -87,18 +99,22 @@ function compareAdminUsers(a, b) {
   return String(userHandle(a)).localeCompare(String(userHandle(b)), undefined, { sensitivity: 'base' });
 }
 
+/** Return a new array of users in admin-table order. */
 function sortAdminUsers(users) {
   return [...users].sort(compareAdminUsers);
 }
 
+/** Merge a user update but keep older group info if the server omitted it. */
 function keepUserGroups(previous, updated) {
   return { ...previous, ...updated, groups: updated.groups || previous.groups || [] };
 }
 
+/** Pick a friendly error message from a failed API call. */
 function apiErrorMessage(error, fallback) {
   return error.response?.data?.message || error.message || fallback;
 }
 
+/** Staff control panel for users and groups. */
 export default function Admin() {
   const [currentUser, setCurrentUser] = useState(readTodoUser);
   const viewerIsHead = isHeadUser(currentUser);

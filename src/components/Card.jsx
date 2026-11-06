@@ -1,8 +1,13 @@
+/*
+ * Simple card box used on the dashboard.
+ * It shows a title and whatever content you put inside.
+ */
 import React from 'react';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 
+/** A titled box that wraps dashboard content. */
 export default function Card({ title, children, minHeight }) {
   return (
     <Paper

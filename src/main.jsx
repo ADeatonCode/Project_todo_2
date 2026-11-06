@@ -1,3 +1,8 @@
+/*
+ * Entry point for the React website.
+ * It picks the theme colors, turns on the router, and draws the App.
+ * basename "/projects/todo" means the site lives in that folder on the web host.
+ */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

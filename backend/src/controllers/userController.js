@@ -1,3 +1,8 @@
+/*
+ * This file signs people up, logs them in, and lists who can be assigned a task.
+ * Passwords are scrambled (hashed) before we save them.
+ * After signup we add a few sample tasks so a new account is not empty.
+ */
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const User = require("../models/user.js");
@@ -18,18 +23,22 @@ const {
   ensureSingleHead,
 } = require("../utils/admin.js");
 
+// True if this password is already scrambled with bcrypt (starts with $2).
 function looksLikeBcrypt(stored) {
   return typeof stored === "string" && stored.startsWith("$2");
 }
 
+// Make a random hall-pass token the browser sends on later requests.
 function newSessionToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
+// Login form may send username or email; take whichever was filled in.
 function loginIdentifier(body) {
   return body?.username || body?.email || "";
 }
 
+// Give a brand-new user a few example tasks so the list is not blank.
 async function seedSampleTodos(userId) {
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
@@ -71,6 +80,7 @@ async function seedSampleTodos(userId) {
   ]);
 }
 
+// Check the password. If an old account stored it in plain text, upgrade it to a hash.
 async function verifyAndMigratePassword(user, password) {
   const stored = user.password || "";
   if (looksLikeBcrypt(stored)) {
@@ -83,6 +93,7 @@ async function verifyAndMigratePassword(user, password) {
   return false;
 }
 
+// Sign up: check the username, hash the password, and maybe make this person an admin.
 const createUser = async (req, res) => {
   const name = String(req.body.name || "").trim();
   const username = identifierToUsername(req.body.username || req.body.email);
@@ -109,9 +120,11 @@ const createUser = async (req, res) => {
     }
     const existingHead = await User.exists({ role: "head" });
     let role = "user";
+    // Known owner emails become head if none exists, otherwise a regular admin.
     if (isAdminEmail(username) || isAdminEmail(email)) {
       role = existingHead ? "admin" : "head";
     }
+    // Hash so the real password is not stored in the database.
     const hashed = await bcrypt.hash(password, 10);
     const addUser = await User.create({
       name,
@@ -143,6 +156,7 @@ const createUser = async (req, res) => {
   }
 };
 
+// Log in: find the user, check the password, then give them a new session token.
 const loginUser = async (req, res) => {
   const identifier = loginIdentifier(req.body);
   const { password } = req.body;
@@ -157,6 +171,7 @@ const loginUser = async (req, res) => {
     }
     await ensureUsername(User, user);
     await ensureSingleHead(User, user);
+    // New token each login so an old stolen token stops working.
     user.sessionToken = newSessionToken();
     await user.save();
     res.status(200).send(authUser(user));
@@ -166,6 +181,7 @@ const loginUser = async (req, res) => {
   }
 };
 
+// Admin delete. You cannot delete yourself, the head, or (if you are not head) another admin.
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -190,6 +206,7 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// Admin list of all users, without passwords or tokens.
 const getUser = async (req, res) => {
   try {
     const users = await User.find().select("-password -sessionToken");
@@ -200,6 +217,7 @@ const getUser = async (req, res) => {
   }
 };
 
+// People this user may assign tasks to: staff see everyone, others see groupmates.
 const listAssignableUsers = async (req, res) => {
   try {
     let users;
@@ -227,10 +245,12 @@ const listAssignableUsers = async (req, res) => {
   }
 };
 
+// Update name-like fields. Password, token, role, and banned cannot be changed here.
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = { ...req.body };
+    // Strip secret/admin fields so a regular update cannot steal a role or token.
     delete updates.password;
     delete updates.sessionToken;
     delete updates.role;

@@ -1,3 +1,8 @@
+/*
+ * This file is the teacher desk for the app: list users, ban, change roles, reset tasks.
+ * Only the head admin can create other admins or pass the head role to someone else.
+ * You cannot ban, delete, or demote yourself or the current head.
+ */
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const User = require("../models/user");
@@ -15,6 +20,7 @@ const {
   sortAdminUsers,
 } = require("../utils/admin");
 
+// Shared "no" reasons: missing user, yourself, the head, or another admin if you are not head.
 function cannotModerate(req, target) {
   if (!target) {
     return { status: 404, message: "User not found" };
@@ -31,6 +37,7 @@ function cannotModerate(req, target) {
   return null;
 }
 
+// List every user with group names, sorted for the admin table.
 const listUsers = async (req, res) => {
   try {
     const [users, groups] = await Promise.all([
@@ -62,6 +69,7 @@ const listUsers = async (req, res) => {
   }
 };
 
+// Admin creates a user. Only the head can set the new person's role to admin.
 const createAdminUser = async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
@@ -101,6 +109,7 @@ const createAdminUser = async (req, res) => {
       return res.status(400).send({ message: "Username already in use" });
     }
 
+    // Hash the password the same way signup does.
     const hashed = await bcrypt.hash(password, 10);
     const created = await User.create({
       name,
@@ -121,6 +130,7 @@ const createAdminUser = async (req, res) => {
   }
 };
 
+// Ban/unban a user, or (head only) change admin/user role. Head role cannot be set here.
 const patchAdminUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -173,6 +183,7 @@ const patchAdminUser = async (req, res) => {
   }
 };
 
+// Delete a user and their tasks, and pull them out of any groups.
 const removeUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -192,6 +203,7 @@ const removeUser = async (req, res) => {
   }
 };
 
+// Head-only: give the head role to someone else, then this person becomes a regular admin.
 const makeHead = async (req, res) => {
   try {
     if (!isHead(req.user)) {
@@ -214,6 +226,7 @@ const makeHead = async (req, res) => {
       return res.status(400).send({ message: "That user is already the head admin" });
     }
 
+    // Use a database transaction so two heads never exist at the same time.
     const session = await mongoose.startSession();
     let headUser = target;
     let formerHead;
@@ -245,6 +258,7 @@ const makeHead = async (req, res) => {
       if (error.status) {
         return res.status(error.status).send({ message: error.message });
       }
+      // Some hosts do not support transactions. Fall back to two updates in a row.
       const noTransactions = error.code === 20 || /replica set|Transaction numbers/i.test(error.message || "");
       if (!noTransactions) {
         throw error;
@@ -271,6 +285,7 @@ const makeHead = async (req, res) => {
   }
 };
 
+// Wipe every task this user created (admin tool for a messy account).
 const resetUserTasks = async (req, res) => {
   try {
     const { id } = req.params;

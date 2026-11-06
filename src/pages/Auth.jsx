@@ -1,3 +1,8 @@
+/*
+ * Login and signup page for Project TODO.
+ * New people make an account; returning people sign in.
+ * After a good login we save their info in the browser and go to the dashboard.
+ */
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -16,6 +21,7 @@ import { signupUser, loginUser } from '../utils/api';
 
 const MotionPaper = motion(Paper);
 
+/** Save the logged-in user (including token) in the browser. */
 function persistTodoUser(user) {
   if (!user) return;
   localStorage.setItem('todoUser', JSON.stringify({
@@ -28,10 +34,12 @@ function persistTodoUser(user) {
   }));
 }
 
+/** Pick a friendly error message from a failed API call. */
 function apiErrorMessage(error, fallback) {
   return error.response?.data?.message || error.message || fallback;
 }
 
+/** The login/signup screen. */
 export default function Auth() {
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);

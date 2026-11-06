@@ -1,3 +1,8 @@
+/*
+ * This is the shell of the website: the top bar and the pages.
+ * If nobody is logged in, we only show the login/signup page.
+ * Logged-in people get Dashboard, Tasks, and (staff only) Admin.
+ */
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AppBar from '@mui/material/AppBar';
@@ -17,6 +22,7 @@ export default function App() {
   const navigate = useNavigate();
   const [, setUser] = useState(readTodoUser);
 
+  // Re-read the saved user if this tab or another tab logs in or out.
   useEffect(() => {
     const refresh = () => setUser(readTodoUser());
     refresh();

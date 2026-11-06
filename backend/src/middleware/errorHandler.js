@@ -1,3 +1,7 @@
+/*
+ * This file turns database errors into simple messages for the website.
+ * A bad field is a 400. A missing id is "not found". Anything else is a 500.
+ */
 export  function errorHandler(err, req, res, next) {
 if(err.name === "ValidationError") 
    {res.status(400).json({ "message": err.message});

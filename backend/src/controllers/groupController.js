@@ -1,3 +1,7 @@
+/*
+ * This file creates groups, lists them, adds members, and deletes groups.
+ * Regular users only see groups they joined. Staff can see every group.
+ */
 const Group = require("../models/Group");
 const User = require("../models/user");
 const Todo = require("../models/Todo");
@@ -8,12 +12,14 @@ const GROUP_POPULATE = [
   { path: "createdBy", select: "name username email" },
 ];
 
+// Staff or the person who created the group may add members and delete it.
 function isGroupAdminOrCreator(user, group) {
   if (isStaff(user)) return true;
   return String(group.createdBy) === String(user._id) ||
     (group.createdBy && group.createdBy._id && String(group.createdBy._id) === String(user._id));
 }
 
+// List groups. Staff see all groups; everyone else only sees groups they joined.
 const getGroups = async (req, res) => {
   try {
     const filter = isStaff(req.user)
@@ -27,6 +33,7 @@ const getGroups = async (req, res) => {
   }
 };
 
+// Start a group and put the creator in as the first member.
 const createGroup = async (req, res) => {
   try {
     const name = String(req.body.name || "").trim();
@@ -48,6 +55,7 @@ const createGroup = async (req, res) => {
   }
 };
 
+// Add a person by username/email, then also save the group on that user's record.
 const addGroupMember = async (req, res) => {
   try {
     const { id } = req.params;
@@ -79,6 +87,7 @@ const addGroupMember = async (req, res) => {
   }
 };
 
+// Delete the group, remove it from members, and unhook tasks that pointed at it.
 const deleteGroup = async (req, res) => {
   try {
     const { id } = req.params;

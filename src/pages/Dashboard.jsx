@@ -1,3 +1,8 @@
+/*
+ * Dashboard page — charts and quick facts about your tasks.
+ * It loads your todos from the server and draws pie/line/bar charts.
+ * Staff may see extra totals; regular users see their own work.
+ */
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Alert, Grid, Link, Typography } from '@mui/material';
@@ -59,6 +64,7 @@ function weeklyActivityFromCreatedAt(todos) {
   return days.map((day, i) => ({ day, tasks: counts[i] }));
 }
 
+/** Charts and summary numbers for your tasks. */
 export default function Dashboard() {
   const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(true);

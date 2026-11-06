@@ -1,3 +1,7 @@
+/*
+ * Vite build settings for Project TODO.
+ * base "/projects/todo/" makes asset links work when hosted in that folder.
+ */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 

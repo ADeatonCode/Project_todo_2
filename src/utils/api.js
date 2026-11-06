@@ -1,10 +1,11 @@
-// what is the endpoint/url for the getTodos api? "localhost:5000/api/todos/"
-// Axios is a library that allows you to make HTTP requests from the browser
-// Axios is asynchronous
+/*
+ * Tiny helpers that talk to the Project TODO backend API.
+ * Axios sends GET/POST/PUT/DELETE requests over the network.
+ * Each function below asks the server for one job (list tasks, login, and so on).
+ * VITE_API_URL can point at a hosted server; otherwise it uses localhost:5000.
+ */
 import axios from "axios";
 
-// http requests
-// GET, POST, PUT, DELETE
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -12,6 +13,7 @@ const http = axios.create({
   timeout: 60000,
 });
 
+// Attach the logged-in user's token/id to every request so the server knows who we are.
 http.interceptors.request.use((config) => {
   try {
     const raw = localStorage.getItem("todoUser");
@@ -31,6 +33,7 @@ http.interceptors.request.use((config) => {
   return config;
 });
 
+/** Ask the server for this user's tasks (or trash if options.trash). */
 const getTodos = async (options = {}) => {
     try { 
         const params = {};
@@ -45,6 +48,7 @@ const getTodos = async (options = {}) => {
     }
 }
 
+/** Create a new task on the server. */
 const createTodo = async (title, description = "", tags = [], project = "", groupId = "", assignedTo = [], schedule = {}) => {
     try {
         const body = {
@@ -84,6 +88,7 @@ const createTodo = async (title, description = "", tags = [], project = "", grou
     }
 }
 
+/** Change fields on an existing task. */
 const updateTodo = async (id, updates = {}) => {
     try {
         const response = await http.put(`${API}/api/todos/${id}`, updates);
@@ -94,6 +99,7 @@ const updateTodo = async (id, updates = {}) => {
     }
 }
 
+/** Move a task to trash (or delete it, depending on the server). */
 const deleteTodo = async (id) => {
     try {
         const response = await http.delete(`${API}/api/todos/delete/${id}`);
@@ -104,6 +110,7 @@ const deleteTodo = async (id) => {
     }
 }
 
+/** Pull a task out of the trash. */
 const restoreTodo = async (id) => {
     try {
         const response = await http.post(`${API}/api/todos/${id}/restore`);
@@ -125,6 +132,7 @@ const getTags = async () => {
     }
 }
 
+/** Make a new tag. */
 const createTag = async (name, color = "#2196f3", description = "") => {
     try {
         const response = await http.post(`${API}/api/tags/create`, {
@@ -154,6 +162,7 @@ const signupUser = async (name, username, password) => {
     }
 }
 
+/** Sign in and get back the user plus a token. */
 const loginUser = async (username, password) => {
     try {
         const response = await http.post(`${API}/api/user/login`, {
@@ -167,6 +176,7 @@ const loginUser = async (username, password) => {
     }
 }
 
+/** List groups this user can see. */
 const getGroups = async () => {
     try {
         const response = await http.get(`${API}/api/groups/`);
@@ -177,6 +187,7 @@ const getGroups = async () => {
     }
 }
 
+/** Start a new group. */
 const createGroup = async (name) => {
     try {
         const response = await http.post(`${API}/api/groups/`, { name });
@@ -187,6 +198,7 @@ const createGroup = async (name) => {
     }
 }
 
+/** Add a person to a group by username. */
 const addGroupMember = async (groupId, username) => {
     try {
         const response = await http.post(`${API}/api/groups/${groupId}/members`, { username });
@@ -197,6 +209,7 @@ const addGroupMember = async (groupId, username) => {
     }
 }
 
+/** Delete a group. */
 const deleteGroup = async (groupId) => {
     try {
         const response = await http.delete(`${API}/api/groups/${groupId}`);
@@ -207,6 +220,7 @@ const deleteGroup = async (groupId) => {
     }
 }
 
+/** People I am allowed to assign a task to. */
 const getAssignableUsers = async () => {
     try {
         const response = await http.get(`${API}/api/user/assignable`);
@@ -217,6 +231,7 @@ const getAssignableUsers = async () => {
     }
 }
 
+/** Staff-only: list all users. */
 const getAdminUsers = async () => {
     try {
         const response = await http.get(`${API}/api/user/admin/users`);
@@ -227,6 +242,7 @@ const getAdminUsers = async () => {
     }
 }
 
+/** Staff-only: create a user. */
 const createAdminUser = async (name, username, password, role) => {
     try {
         const body = { name, username, password };
@@ -241,6 +257,7 @@ const createAdminUser = async (name, username, password, role) => {
     }
 }
 
+/** Staff-only: ban or unban a user. */
 const setUserBanned = async (id, banned) => {
     try {
         const response = await http.patch(`${API}/api/user/admin/users/${id}`, { banned });
@@ -251,6 +268,7 @@ const setUserBanned = async (id, banned) => {
     }
 }
 
+/** Staff-only: change a user's role. */
 const setUserRole = async (id, role) => {
     try {
         const response = await http.patch(`${API}/api/user/admin/users/${id}`, { role });
@@ -261,6 +279,7 @@ const setUserRole = async (id, role) => {
     }
 }
 
+/** Head-only: transfer the top admin role. */
 const makeHead = async (id) => {
     try {
         const response = await http.post(`${API}/api/user/admin/users/${id}/make-head`);
@@ -271,6 +290,7 @@ const makeHead = async (id) => {
     }
 }
 
+/** Staff-only: remove a user account. */
 const removeAdminUser = async (id) => {
     try {
         const response = await http.delete(`${API}/api/user/admin/users/${id}`);
@@ -281,6 +301,7 @@ const removeAdminUser = async (id) => {
     }
 }
 
+/** Staff-only: clear a user's tasks. */
 const resetUserTasks = async (id) => {
     try {
         const response = await http.post(`${API}/api/user/admin/users/${id}/reset-tasks`);

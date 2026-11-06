@@ -1,3 +1,9 @@
+/*
+ * This file starts the Project TODO server.
+ * It talks to MongoDB, then waits for the website to ask for data.
+ * CORS is a gate that says which websites may call this server.
+ * After the database connects, we also fix admin data and throw away old trash.
+ */
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -8,6 +14,7 @@ const userRoutes = require("./routes/userRoutes.js");
 const tagRoutes = require("./routes/tagRoutes.js");
 const groupRoutes = require("./routes/groupRoutes.js");
 
+// Hook up MongoDB, then run one-time cleanup that needs the database.
 // to use enviroment variables access the process.env //
 const connectDB = async () => {
   try {
@@ -15,13 +22,16 @@ const connectDB = async () => {
     console.log("mongodb connected");
     const User = require("./models/user.js");
     const { repairHeadUniqueness, backfillUsernames } = require("./utils/admin.js");
+    // Only one person can be head admin, so extra heads get demoted.
     await repairHeadUniqueness(User);
     try {
+      // Older users might have no username yet; fill one in from their email.
       await backfillUsernames(User);
     } catch (backfillErr) {
       console.error("Could not backfill usernames:", backfillErr.message);
     }
     try {
+      // Old unique email index blocked accounts with no email. Drop it so username-only signups work.
       const indexes = await User.collection.indexes();
       const emailIdx = indexes.find((idx) => idx.name === "email_1" && idx.unique && !idx.sparse);
       if (emailIdx) {
@@ -37,6 +47,7 @@ const connectDB = async () => {
     } catch (indexErr) {
       console.error("Could not sync unique head index:", indexErr.message);
     }
+    // Trash older than 30 days should be gone. Check once now, then every hour.
     const { purgeExpiredTrash } = require("./controllers/todoController.js");
     await purgeExpiredTrash();
     setInterval(() => {
@@ -57,11 +68,13 @@ const localOrigins = [
 
 if (frontendOrigin) {
   const allowedOrigins = [...localOrigins, frontendOrigin].filter(Boolean);
+  // Class hosting on InfinityFree uses a few related domains; allow those too.
   const isInfinityFreeOrigin = (origin) =>
     /infinityfreeapp\.com$/.test(origin) ||
     /infinityfree\.com$/.test(origin) ||
     /epizy\.com$/.test(origin);
 
+  // Only our site (plus local Vite) may call the API. Random other websites are blocked.
   app.use(cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
@@ -84,6 +97,7 @@ const PORT = process.env.PORT || 5000;
 
 
 
+// Each path below is a folder of API routes the website can call.
 app.use("/api/todos", todoRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/tags", tagRoutes);

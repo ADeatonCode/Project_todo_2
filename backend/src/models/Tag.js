@@ -1,3 +1,8 @@
+/*
+ * This file is the blueprint for a color label, like "homework" or "chores".
+ * Names are unique and stored lowercase so "Work" and "work" are the same tag.
+ * select: false on description means that field is hidden unless we ask for it.
+ */
 const mongoose = require("mongoose")
 
 const tagSchema = new mongoose.Schema({
